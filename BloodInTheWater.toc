@@ -1,0 +1,26 @@
+# Retail-only addon — single "## Interface:" line below, no Classic support.
+# Reference values for the Classic variants, in case that ever changes
+# (warcraft.wiki.gg/wiki/TOC_format, checked 2026-09):
+#   Vanilla (Classic Era): 11509
+#   TBC Classic:           20506
+#   Wrath Classic:         30405
+#   Cata Classic:          40402
+#   Mists Classic:         50504
+## Interface: 120100
+
+## Title: Blood in the Water
+## Version: @project-version@
+## Notes: A Feral Druid addon for Cat Form that adds an energy bar, combo points, timers for important debuffs, and icons for key procs and cooldowns
+## Author: Backupzzz
+
+## SavedVariables: BloodInTheWaterDB
+## AddonCompartmentFunc: BloodInTheWater_OnAddonCompartmentClick
+## IconTexture: Interface\AddOns\BloodInTheWater\Media\bitw_logo.png
+## Category: Combat
+
+## X-Curse-Project-ID: 1698812
+## RequiredDeps: Ace3
+## OptionalDeps: LibSharedMedia-3.0
+
+BloodInTheWater.lua
+Options.lua

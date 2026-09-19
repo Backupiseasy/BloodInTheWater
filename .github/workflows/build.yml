@@ -1,0 +1,31 @@
+# Packages and publishes a release to CurseForge and GitHub.
+# Triggers on a version tag (e.g. "1.0.0").
+#
+# Actual packaging logic lives in the reusable workflow _package_release.yml - this file
+# only owns the trigger, naming, and which secrets are forwarded.
+name: Package and release version
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to package and release (e.g. 1.0.0)"
+        required: true
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/_package_release.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+    secrets:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      # WoWInterface and Wago publishing intentionally disabled - CurseForge and GitHub only.
+      # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+      # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}

@@ -1,0 +1,50 @@
+# Reusable workflow: actual packaging/release logic used by build.yml. Only triggered via
+# workflow_call - never runs on its own. build.yml owns the trigger (tag pattern /
+# workflow_dispatch), naming, and which secrets it forwards; this file owns HOW a release
+# gets built and published.
+name: Package release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref (tag) to check out and package"
+        required: true
+        type: string
+    secrets:
+      CF_API_KEY:
+        required: false
+      # WoWInterface and Wago publishing intentionally disabled - CurseForge and GitHub only.
+      # WOWI_API_TOKEN:
+      #   required: false
+      # WAGO_API_TOKEN:
+      #   required: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+      # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Create package
+        # BloodInTheWater.toc declares a single "## Interface:" value (120007 - Retail), so
+        # the packager builds only that one flavor by default - no per-flavor matrix or -g
+        # flag needed. If Classic/Cata/Mists support is ever added via "## Interface-<Type>:"
+        # lines in the TOC, restrict this build to Retail only with:
+        #   args: -e -l -n "BloodInTheWater-{project-version}" -g retail
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -e -l -n "BloodInTheWater-{project-version}"

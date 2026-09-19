@@ -1,0 +1,10 @@
+package-as: BloodInTheWater
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  # The packager auto-excludes anything starting with a dot, so those don't need to be listed here.
+  - CLAUDE.md
+  - README.md
