@@ -24,6 +24,10 @@ concurrency:
 
 jobs:
   release:
+    # The reusable workflow's job requests "contents: write" (to create the GitHub release); a
+    # called workflow can't exceed the caller's permissions, and the repo default is read-only.
+    permissions:
+      contents: write
     uses: ./.github/workflows/_package_release.yml
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
