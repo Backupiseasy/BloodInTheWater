@@ -1,5 +1,6 @@
 # Packages and publishes a release to CurseForge and GitHub.
-# Triggers on a version tag (e.g. "1.0.0").
+# Triggers on a version tag (e.g. "1.0.0"). Tags with a "-beta"/"-alpha" suffix (e.g. "1.1.0-beta1")
+# are published as beta/alpha by the packager (pre-release on GitHub).
 #
 # Actual packaging logic lives in the reusable workflow _package_release.yml - this file
 # only owns the trigger, naming, and which secrets are forwarded.
@@ -9,6 +10,8 @@ on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-beta*"
+      - "[0-9]+.[0-9]+.[0-9]+-alpha*"
   workflow_dispatch:
     inputs:
       tag:
