@@ -117,7 +117,7 @@ end
 -- All spell IDs below are hardcoded, not user-configured — no Options input
 -- field exists for any of them (was tried, reverted per explicit request).
 local NUM_DEBUFF_SLOTS = 3 -- covers Rake + Rip + Moonfire tracked simultaneously
-local DEBUFF_SPELL_IDS = {155722, 1079, 8921} -- Rake, Rip, Moonfire (Feral, via Lunar Inspiration)
+local DEBUFF_SPELL_IDS = {155722, 1079, 155625} -- Rake, Rip, Moonfire (Feral, via Lunar Inspiration; the aura is 155625, not the cast ID 8921)
 local NUM_PLAYER_BUFF_SLOTS = 3 -- matches #PLAYER_BUFF_SPELL_IDS
 -- 3rd slot (0) is reserved/disabled by default — Clearcasting and
 -- Predatory Swiftness are the only two currently assigned; no options UI
