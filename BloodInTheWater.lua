@@ -10,24 +10,24 @@ local Addon = LibStub("AceAddon-3.0"):NewAddon("BloodInTheWater", "AceEvent-3.0"
 local Defaults = {
   profile = {
     posX   = 0,
-    posY   = -100,
-    width  = 200,
-    height = 20,
+    posY   = -220,
+    width  = 240,
+    height = 28,
     -- Energy bar fill texture (LibSharedMedia "statusbar" key) and its
     -- border (LibSharedMedia "border" key + edge thickness/inset/color).
     -- "Smooth" is bundled by this addon itself (Media/Smooth.tga, see
     -- ADDON_FOLDER/LSM:Register above), not the SharedMedia data addon.
     barTexture       = "Smooth",
-    barColor         = {1, 0.7, 0, 1},   -- energy bar fill color + alpha (was hardcoded orange)
-    barFontSize      = 12,               -- energy value number font size (points)
+    barColor         = {0.949, 1, 0.043, 1}, -- energy bar fill color + alpha
+    barFontSize      = 24,               -- energy value number font size (points)
     barBorderTexture = "PlainBorder",
-    barBorderSize    = 12,               -- edge thickness (px)
+    barBorderSize    = 16,               -- edge thickness (px)
     barBorderInset   = 0,                -- offset of the edge from the bar's own outer edge (px)
-    barBorderColor   = {1, 1, 1, 1},      -- border color + alpha
+    barBorderColor   = {0, 0, 0, 0.3},      -- border color + alpha
     -- Combo point counter text (anchored relative to the energy bar center).
     cpPosX     = 0,   -- X offset from Bar center (px)
-    cpPosY     = 0,   -- Y offset from Bar center (px)
-    cpFontSize = 20,  -- font size (points)
+    cpPosY     = 78,  -- Y offset from Bar center (px)
+    cpFontSize = 24,  -- font size (points)
     -- Combo point colors per threshold.
     cpColor0 = {1,   1,   1,   1},  -- 0 points  : white
     cpColor1 = {1,   1,   0,   1},  -- 1-3 points : yellow
@@ -40,46 +40,46 @@ local Defaults = {
     -- point size.
     appearanceFont      = "Cabin", -- LibSharedMedia font key (bundled, see ADDON_FOLDER above)
     appearanceIconSize  = 32,                 -- icon width/height (px), shared everywhere
-    appearanceFontScale = 0.5,                -- countdown font size = iconSize * this (0.1-1.0)
+    appearanceFontScale = 0.6,                -- countdown font size = iconSize * this (0.1-1.0)
     -- Pandemic (DoT refresh window) glow — only meaningful for the target
     -- debuffs (Options: Debuffs tab), though the region is attached to
     -- every AuraButton (see InitializeAuraButton). Shown state is driven by
     -- Blizzard's own secret AddPandemicRegion aspect, only color/alpha are
     -- addon-set.
-    pandemicColor = {0x4C/255, 0x99/255, 0x00/255, 0.8}, -- 4C9900, green
+    pandemicColor = {0.498, 1, 0, 1}, -- 7FFF00, chartreuse green
     pandemicStyle = "wow", -- "custom" (plain outset border) or "wow" (Assisted Combat-style ants glow)
     -- Target debuff icons (AuraContainer), 3 fixed, individually positioned
     -- slots (Offset X/Y each, relative to the energy bar center) — spell IDs
     -- hardcoded, see DEBUFF_SPELL_IDS.
     debuffOffsets = {
-      {x = -70, y = 30},
-      {x = 0,   y = 30},
-      {x = 70,  y = 30},
+      {x = -106, y = 38},
+      {x = 106,  y = 38},
+      {x = 0,    y = 38},
     },
     debuffNormalColor = {1, 1, 1, 1}, -- countdown text color
     -- Combo point overflow buffer (Überquellende Macht) — spell ID is
     -- hardcoded (CP_BUFFER_SPELL_ID), not user-configured.
-    cpBufferPosX     = 30,    -- X offset from Bar center (px)
-    cpBufferPosY     = 0,     -- Y offset from Bar center (px)
+    cpBufferPosX     = 20,    -- X offset from Bar center (px)
+    cpBufferPosY     = 78,    -- Y offset from Bar center (px)
     cpBufferFontSize = 14,    -- font size (points)
     -- Player buff icons (AuraContainer), 3 fixed, individually positioned
     -- slots — same pattern as the target debuffs above. Spell IDs hardcoded,
     -- see PLAYER_BUFF_SPELL_IDS.
     buffOffsets = {
-      {x = -40, y = -40},
-      {x = 0,   y = -40},
+      {x = -28, y = -40},
+      {x = 28,  y = -40},
       {x = 40,  y = -40},
     },
     buffNormalColor = {1, 1, 1, 1}, -- countdown text color
-    buffStacksPosX = 2,  -- stack-count text offset from icon BOTTOMRIGHT (px)
-    buffStacksPosY = -2,
+    buffStacksPosX = 4,  -- stack-count text offset from icon BOTTOMRIGHT (px)
+    buffStacksPosY = -8,
     -- Cooldown-buff icons (Tiger's Fury/Berserk/Incarnation by default,
     -- hardcoded — see COOLDOWN_BUFF_SPELL_IDS). Stays one positioned unit
     -- with a Spacing value (stacked vertically), unlike Debuffs/Buffs above
     -- which are individually positioned per slot.
-    cooldownBuffPosX    = 0,   -- X offset from Bar center (px)
-    cooldownBuffPosY    = -80, -- Y offset below Bar bottom (px)
-    cooldownBuffSpacing = 8,   -- vertical spacing between stacked icons (px)
+    cooldownBuffPosX    = -280, -- X offset from Bar center (px)
+    cooldownBuffPosY    = 70,  -- Y offset below Bar bottom (px)
+    cooldownBuffSpacing = 4,   -- vertical spacing between stacked icons (px)
     cooldownBuffNormalColor = {1, 1, 1, 1}, -- countdown text color
   }
 }
