@@ -118,6 +118,11 @@ end
 -- field exists for any of them (was tried, reverted per explicit request).
 local NUM_DEBUFF_SLOTS = 3 -- covers Rake + Rip + Moonfire tracked simultaneously
 local DEBUFF_SPELL_IDS = {155722, 1079, 155625} -- Rake, Rip, Moonfire (Feral, via Lunar Inspiration; the aura is 155625, not the cast ID 8921)
+-- Further aura IDs that fill the same slot (slot index -> list), matched
+-- alongside DEBUFF_SPELL_IDS[i]. Slot 3: without Lunar Inspiration, Moonfire
+-- is cast outside Cat Form and leaves the regular Moonfire DoT (164812) on the
+-- target — still worth showing once back in Cat Form. The slot shows one icon.
+local DEBUFF_EXTRA_SPELL_IDS = {[3] = {164812}}
 local NUM_PLAYER_BUFF_SLOTS = 3 -- matches #PLAYER_BUFF_SPELL_IDS
 -- 3rd slot (0) is reserved/disabled by default — Clearcasting and
 -- Predatory Swiftness are the only two currently assigned; no options UI
@@ -732,7 +737,11 @@ function Addon:UpdateDebuffContainerFilters()
       if showRow and spellID and spellID > 0 then
         container:SetUnit("target")
         container:SetAuraGroupFilterString("main", "HARMFUL|PLAYER")
-        container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = { [spellID] = true } })
+        local includeSpellIDs = { [spellID] = true }
+        for _, extraID in ipairs(DEBUFF_EXTRA_SPELL_IDS[i] or {}) do
+          includeSpellIDs[extraID] = true
+        end
+        container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = includeSpellIDs })
         container:SetAuraGroupMaxFrameCount("main", 1)
         container:SetAuraGroupLayout("main", { elementWidth = db.appearanceIconSize, elementHeight = db.appearanceIconSize })
         container:SetFlowLayoutMaximumLineSize(db.appearanceIconSize)

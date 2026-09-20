@@ -7,6 +7,7 @@
 * Fixed resetting, copying or switching a profile not applying the settings until the UI is reloaded.
 * Fixed the debuff, proc and cooldown icons showing outside of combat while in Cat Form.
 * Fixed the Moonfire debuff icon not being shown.
+* Added the regular Moonfire debuff to the Moonfire icon, so it also shows when Moonfire is used without Lunar Inspiration.
 
 ------------------------------------------------------
 1.0.0 (2026-09-19)
