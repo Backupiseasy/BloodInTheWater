@@ -69,11 +69,70 @@ line, which is more robust than width arithmetic.
 
 ## Combat gating
 
-Bar + every row hidden unless **both** in Cat Form (`GetShapeshiftFormID() ==
-CAT_FORM_ID`, `CAT_FORM_ID = 1`) **and** in combat (`InCombatLockdown()`), or
-Config Mode is on (force-shows everything). See `Addon:OnShapeshift()`.
-`Bar.stateTicker` is a dedicated, never-hidden frame re-checking this every
-0.5s, since a hidden frame gets no `OnUpdate` to self-correct through.
+Bar + every icon row hidden unless **both** in Cat Form (`GetShapeshiftFormID() ==
+CAT_FORM_ID`, `CAT_FORM_ID = 1`) **and** in combat, or Config Mode is on
+(force-shows everything). The condition lives in one place,
+`ShouldShowInCombat()`, used by `Addon:OnShapeshift()` (Bar, combo points) **and**
+the three `Update*ContainerFilters()` (all icon rows) — keep them in sync, don't
+re-derive it per row.
+
+"In combat" = `Addon.inCombat or InCombatLockdown()`. `Addon.inCombat` is set by
+`Addon:OnCombatStarted()` (`PLAYER_REGEN_DISABLED`) and cleared at the top of
+`Addon:OnCombatEnded()` (`PLAYER_REGEN_ENABLED`); `InCombatLockdown()` covers a
+`/reload` mid-combat. Do not use `InCombatLockdown()` alone: with no polling, the
+Bar and combo points stayed hidden in real combat while the icon rows showed
+(tested in-game; the fix with `Addon.inCombat` was confirmed working — Bar,
+combo points and all rows show in combat in Cat Form and hide on leaving Cat
+Form or ending combat). The likely cause is `InCombatLockdown()` still being
+false inside the `PLAYER_REGEN_DISABLED` handler; that part is not verified from
+documentation.
+
+State is purely event-driven (`UPDATE_SHAPESHIFT_FORM`, `PLAYER_REGEN_*`, aura/
+target events). There is deliberately **no polling ticker** — the former
+`Bar.stateTicker` (separate never-hidden frame, `OnUpdate` calling `OnShapeshift`
+every 0.5s) was removed as unproven. Background, in case display problems
+(Bar/rows stuck hidden or shown) ever show up in-game:
+
+- The ticker's original rationale (a code comment) was that `PLAYER_REGEN_*`/
+  `UPDATE_SHAPESHIFT_FORM` might be missed or reordered, e.g. by brief
+  regen-enabled blips between back-to-back pulls. Never reproduced or
+  confirmed. An earlier idea that `GetShapeshiftFormID()` returns the old form
+  inside the event is **unverified speculation** (Blizzard's own tutorial
+  handlers read it directly inside `UPDATE_SHAPESHIFT_FORM`). A ticker has to be
+  its own never-hidden frame: a hidden frame gets no `OnUpdate`.
+- Blizzard's own Personal Resource Display (checked against `wow-ui-source`
+  live, `Blizzard_ClassNameplateBar_Druid.lua` / `DruidComboPointBar.lua` /
+  `ClassResourceBarTemplate.lua`): the Feral combo bar shows when
+  `UnitPowerType("player") == Enum.PowerType.Energy` — no form-ID check —
+  and re-evaluates on `UNIT_DISPLAYPOWER`, `PLAYER_ENTERING_WORLD` and
+  `PLAYER_TALENT_UPDATE`. No ticker/polling. Whether the PRD shows only in
+  combat is an engine CVar matter, not visible in the Lua source.
+- If display problems appear, two remedies to try: (1) reinstate the 0.5s
+  ticker; (2) switch the Cat Form check to
+  `UnitPowerType("player") == Enum.PowerType.Energy` and additionally register
+  `UNIT_DISPLAYPOWER` (closer to Blizzard; also triggers for other Energy
+  situations, so it changes behavior slightly).
+- Config Mode's dummy countdowns are the one place that still needs a timer:
+  `Addon:SetPreviewMode()` (called by the Options toggle — never flip
+  `Addon.previewModeActive` directly) runs a 0.5s `C_Timer.NewTicker` calling
+  `UpdatePreviewFrames` only while Config Mode is on, cancelled when it is
+  turned off.
+
+## Callbacks
+
+Registered in `Addon:OnInitialize()`:
+
+- AceDB `OnProfileChanged`/`OnProfileCopied`/`OnProfileReset` → `Addon:OnProfileRefresh()`
+  (`UpdateBar()` + combo-point refresh + `AceConfigRegistry-3.0:NotifyChange`).
+  The Profiles tab only swaps the data, nothing repaints without this.
+- AceDB `OnDatabaseShutdown` → `Addon:OnDatabaseShutdown()`. `PLAYER_LOGOUT` (also
+  `/reload`) makes AceDB strip the defaults from `db.profile`; the handler
+  unregisters all events, cancels the Config Mode timer and the LSM callback so
+  nothing reads missing defaults afterwards.
+- LSM `LibSharedMedia_Registered` → `Addon:OnMediaRegistered()`, debounced to one
+  `Addon:RefreshMedia()` on the next frame (LSM fires it once per media entry,
+  hundreds of times while other addons load). `RefreshMedia()` is also what
+  `PLAYER_ENTERING_WORLD` runs.
 
 `AuraContainer`s cannot be created during combat — creation is guarded by
 `InCombatLockdown()` and retried from `Addon:OnCombatEnded()`.
