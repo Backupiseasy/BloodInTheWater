@@ -20,7 +20,7 @@ local Defaults = {
     barTexture       = "Smooth",
     barColor         = {1, 0.7, 0, 1},   -- energy bar fill color + alpha (was hardcoded orange)
     barFontSize      = 12,               -- energy value number font size (points)
-    barBorderTexture = "Blizzard Tooltip",
+    barBorderTexture = "PlainBorder",
     barBorderSize    = 12,               -- edge thickness (px)
     barBorderInset   = 0,                -- offset of the edge from the bar's own outer edge (px)
     barBorderColor   = {1, 1, 1, 1},      -- border color + alpha
@@ -116,11 +116,11 @@ local PREVIEW_DURATION = 60
 local CAT_FORM_ID = 1
 local Bar            -- StatusBar frame (set in CreateEnergyBar)
 
--- LibSharedMedia-3.0 (LoD, loaded automatically via .toc RequiredDeps) is
+-- LibSharedMedia-3.0 (embedded via Libs/embeds.xml, see .toc) is
 -- the single source of the shared Appearance-tab font/typeface — replaces
 -- the old per-row GameFontXXX font-object selects entirely. `true` as the
 -- 2nd LibStub arg means "don't error if missing", so the addon still works
--- (falling back to STANDARD_TEXT_FONT) if LSM somehow isn't loaded.
+-- (falling back to the bundled font) if LSM somehow isn't loaded.
 local LSM = LibStub("LibSharedMedia-3.0", true)
 local DEFAULT_FONT_KEY = "Cabin"
 
@@ -132,21 +132,27 @@ local DEFAULT_FONT_KEY = "Cabin"
 -- everywhere else in the file (ApplyBarAppearance/GetAppearanceFontPath) —
 -- nothing else needs to change.
 local ADDON_FOLDER = "BloodInTheWater"
+-- The bundled files double as the fallback when the saved key isn't
+-- registered (e.g. the addon that provided it got disabled).
+local FALLBACK_FONT_PATH = ([[Interface\AddOns\%s\Media\Cabin.ttf]]):format(ADDON_FOLDER)
+local FALLBACK_BAR_TEXTURE_PATH = ([[Interface\AddOns\%s\Media\Smooth.tga]]):format(ADDON_FOLDER)
+local FALLBACK_BORDER_PATH = ([[Interface\AddOns\%s\Media\PlainBorder.tga]]):format(ADDON_FOLDER)
 if LSM then
-  LSM:Register("font", "Cabin", ([[Interface\AddOns\%s\Media\Cabin.ttf]]):format(ADDON_FOLDER))
-  LSM:Register("statusbar", "Smooth", ([[Interface\AddOns\%s\Media\Smooth.tga]]):format(ADDON_FOLDER))
+  LSM:Register("font", "Cabin", FALLBACK_FONT_PATH)
+  LSM:Register("statusbar", "Smooth", FALLBACK_BAR_TEXTURE_PATH)
+  LSM:Register("border", "PlainBorder", FALLBACK_BORDER_PATH)
 end
 
 -- Resolves the Appearance tab's saved LSM font key to an actual font file
--- path. Falls back to WoW's own default UI font if LSM is missing or the
--- saved key was never registered (e.g. the addon that registered it got
--- disabled) — SetFont silently no-ops on a bad path otherwise.
+-- path. Falls back to the bundled font if the saved key was never
+-- registered (e.g. the addon that registered it got disabled) — SetFont
+-- silently no-ops on a bad path otherwise.
 local function GetAppearanceFontPath(fontKey)
   if LSM then
     local path = LSM:Fetch("font", fontKey or DEFAULT_FONT_KEY, true)
     if path then return path end
   end
-  return STANDARD_TEXT_FONT
+  return FALLBACK_FONT_PATH
 end
 
 -- AuraContainer/AuraButton (Patch 12.1.0+) is Blizzard's secret-safe aura
@@ -1126,7 +1132,7 @@ function Addon:ApplyBarAppearance()
 
   local db = self.db.profile
   local barTexturePath = LSM and LSM:Fetch("statusbar", db.barTexture, true)
-  Bar:SetStatusBarTexture(barTexturePath or "Interface\\TargetingFrame\\UI-StatusBar")
+  Bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
 
   local bc = db.barColor
   Bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
@@ -1141,29 +1147,27 @@ function Addon:ApplyBarAppearance()
     -- reset forces it to tear down and rebuild from scratch every time.
     Bar.bg:SetBackdrop(nil)
 
-    local borderPath = LSM and LSM:Fetch("border", db.barBorderTexture, true)
-    if borderPath then
-      Bar.bg:SetBackdrop({
-        edgeFile = borderPath,
-        edgeSize = db.barBorderSize,
-        insets = {
-          left = db.barBorderInset, right = db.barBorderInset,
-          top = db.barBorderInset, bottom = db.barBorderInset,
-        },
-      })
-      local c = db.barBorderColor
-      Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
-      -- The freshly (re)created backdrop's edge regions occasionally settle
-      -- back to full alpha a frame after SetBackdrop returns (the RGB
-      -- portion sticks immediately, only alpha snaps back) — reapplying
-      -- once more next frame wins that race instead of leaving the border
-      -- stuck opaque.
-      C_Timer.After(0, function()
-        if Bar and Bar.bg and Bar.bg.SetBackdropBorderColor then
-          Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
-        end
-      end)
-    end
+    local borderPath = (LSM and LSM:Fetch("border", db.barBorderTexture, true)) or FALLBACK_BORDER_PATH
+    Bar.bg:SetBackdrop({
+      edgeFile = borderPath,
+      edgeSize = db.barBorderSize,
+      insets = {
+        left = db.barBorderInset, right = db.barBorderInset,
+        top = db.barBorderInset, bottom = db.barBorderInset,
+      },
+    })
+    local c = db.barBorderColor
+    Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+    -- The freshly (re)created backdrop's edge regions occasionally settle
+    -- back to full alpha a frame after SetBackdrop returns (the RGB
+    -- portion sticks immediately, only alpha snaps back) — reapplying
+    -- once more next frame wins that race instead of leaving the border
+    -- stuck opaque.
+    C_Timer.After(0, function()
+      if Bar and Bar.bg and Bar.bg.SetBackdropBorderColor then
+        Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+      end
+    end)
   end
 end
 
