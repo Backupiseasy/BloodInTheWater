@@ -12,11 +12,12 @@ No build system, no tests, no lint config. Validation is entirely in-game
 
 ## Files
 
-- `BloodInTheWater.toc` — metadata, load order (`BloodInTheWater.lua` then `Options.lua`)
+- `BloodInTheWater.toc` — metadata, load order (`Libs\embeds.xml`, then `BloodInTheWater.lua`, then `Options.lua`)
 - `BloodInTheWater.lua` — addon logic: lifecycle, frame creation, aura rows, events
 - `Options.lua` — AceConfig options table (`Addon:SetupOptions()`, `Addon:OpenConfig()`)
-- `Media/` — bundled font (`Cabin.ttf`), statusbar texture (`Smooth.tga`), addon icon (`bitw_logo.png`)
-- `.pkgmeta` — packager config (BigWigsMods/packager, used by `.github/workflows/`); excludes `CLAUDE.md`/`README.md` from release zips
+- `Libs/embeds.xml` — include list for the embedded libraries (see Framework); the libs themselves are not checked in
+- `Media/` — bundled font (`Cabin.ttf`), statusbar texture (`Smooth.tga`), energy bar border (`PlainBorder.tga`), addon icon (`bitw_logo.png`)
+- `.pkgmeta` — packager config (BigWigsMods/packager, used by `.github/workflows/`); fetches the `Libs/` externals, excludes `CLAUDE.md`/`README.md` from release zips
 - `BloodInTheWater_Changes.log` — full changelog history; `CHANGELOG.md` — packager-facing mirror of only the current unreleased entry block (see Changelog Workflow below)
 
 Options.lua is a separate Lua chunk — it has no access to BloodInTheWater.lua's
@@ -32,7 +33,14 @@ Ace3 (`AceAddon-3.0`, `AceEvent-3.0`, `AceConsole-3.0`, `AceDB-3.0`,
 `LibSharedMedia-3.0` are **embedded** via `Libs/embeds.xml` (loaded first in
 the `.toc`). No `RequiredDeps`/`OptionalDeps` — a missing standalone Ace3
 addon once disabled BitW in-game. `LibSharedMedia-3.0` is still accessed with
-`LibStub("LibSharedMedia-3.0", true)` and a fallback (default font/texture).
+`LibStub("LibSharedMedia-3.0", true)` and guarded with `if LSM`.
+
+The bundled `Media/` files are registered with LSM under the keys `Cabin`
+(font), `Smooth` (statusbar), `PlainBorder` (border) — the `Defaults` values.
+The same files double as fallback (`FALLBACK_FONT_PATH`,
+`FALLBACK_BAR_TEXTURE_PATH`, `FALLBACK_BORDER_PATH`) whenever a saved key isn't
+registered (e.g. the SharedMedia addon that provided it got disabled). A new
+bundled asset needs an LSM registration **and** a fallback constant.
 
 `Libs/` is git-ignored (except `embeds.xml`); the packager fills it from the
 `externals:` in `.pkgmeta` (short form = trunk HEAD, like ThreatPlates). For
@@ -113,7 +121,7 @@ Two files must stay in sync for every user-facing change:
   <version> (<date YYYY-MM-DD>)
   ------------------------------------------------------
   * Entry one.
-  * Entry two [Comment #NNNN].
+  * Entry two [GH-NNN].
   ```
 
 - `CHANGELOG.md` — mirrors **only** the entries of the current unreleased (top) version block in
@@ -121,8 +129,8 @@ Two files must stay in sync for every user-facing change:
 
 Entry format: one `*`-bullet per logical change, starting with a capitalized past-tense verb (`Fixed`,
 `Added`, `Changed`, `Removed`, `Updated`; use `Hopefully fixed` when the fix is unverified), ending with
-a period. Reference CurseForge comments as `[Comment #NNNN]` and GitHub issues/PRs as `[GH-NNN]` or
-`[PR GH-NNN by author]` (combinable as `[GH-NNN, Comment #MMMM]`), placed right before the final
+a period. Reference GitHub issues/PRs as `[GH-NNN]` or `[PR GH-NNN by author]` (CurseForge comments
+are disabled — feedback goes through GitHub Issues/Discussions), placed right before the final
 period — never invent reference numbers.
 
 Wording:

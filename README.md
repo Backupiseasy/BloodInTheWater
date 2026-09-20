@@ -14,7 +14,8 @@ A Feral Druid addon for Cat Form. It adds its own energy bar, combo points, time
 ## Under the hood
 
 - **Config Mode** — force-shows every row with placeholder art and randomized dummy countdowns so you can position everything without a live target or active buffs; a one-off UI aid, not saved between sessions
-- **LibSharedMedia support** — custom bar texture, border, and one shared font for every text element
+- **LibSharedMedia support** — custom bar texture, border, and one shared font for every text element. Font, texture, and border ship with the addon and are used again automatically if a selected one is no longer available (for example because the addon providing it was disabled)
+- **Libraries included** — Ace3 and LibSharedMedia are embedded, nothing else to install
 - **Per-character/profile settings** via AceDB-3.0 (position, size, colors, fonts, spacing — all persist across `/reload` and relogin), switchable/copyable/resettable via the Profiles tab
 - Zero overhead when hidden — no processing while outside Cat Form
 
@@ -37,7 +38,10 @@ Type `/bitw` to open the configuration dialog.
 
 ## Feedback & Issues
 
-Report bugs or feature requests via the comments section on the CurseForge project page.
+Comments are disabled on the CurseForge project page. Please use GitHub instead:
+
+- [Issues](https://github.com/Backupiseasy/BloodInTheWater/issues) — bug reports and feature requests
+- [Discussions](https://github.com/Backupiseasy/BloodInTheWater/discussions) — questions, ideas, and general feedback
 
 ## License
 
