@@ -46,8 +46,7 @@ function Addon:SetupOptions()
         order = 0,
         width = "full",
         func = function()
-          Addon.previewModeActive = not Addon.previewModeActive
-          self:OnShapeshift()
+          Addon:SetPreviewMode(not Addon.previewModeActive)
         end
       },
 

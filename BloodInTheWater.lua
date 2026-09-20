@@ -94,6 +94,26 @@ local Defaults = {
 -- since Options.lua's Config Mode toggle button needs to read/flip it too.
 Addon.previewModeActive = false
 
+-- Turns Config Mode on/off (called from Options.lua's toggle button). While
+-- on, a short ticker keeps the dummy countdowns cycling — UpdatePreviewFrames
+-- only re-rolls a frame's countdown once its previous one ran out, so
+-- without this they'd stay at 0 after the first 1-15s until some other event
+-- happens to call it. Off again, the ticker is gone: zero cost outside
+-- Config Mode.
+function Addon:SetPreviewMode(active)
+  self.previewModeActive = active and true or false
+  if self.previewTicker then
+    self.previewTicker:Cancel()
+    self.previewTicker = nil
+  end
+  if self.previewModeActive then
+    self.previewTicker = C_Timer.NewTicker(0.5, function()
+      self:UpdatePreviewFrames()
+    end)
+  end
+  self:OnShapeshift()
+end
+
 -- All spell IDs below are hardcoded, not user-configured — no Options input
 -- field exists for any of them (was tried, reverted per explicit request).
 local NUM_DEBUFF_SLOTS = 3 -- covers Rake + Rip + Moonfire tracked simultaneously
@@ -114,6 +134,14 @@ local PREVIEW_DURATION = 60
 -- across stance-bar reordering, unlike the positional GetShapeshiftForm()
 -- index (which shifts if not all forms are unlocked/visible).
 local CAT_FORM_ID = 1
+
+-- True while the Bar and every icon row are allowed to show (besides Config
+-- Mode): Cat Form **and** in combat. Combat state comes from the
+-- PLAYER_REGEN_* events (Addon.inCombat, see OnCombatStarted/OnCombatEnded)
+-- with InCombatLockdown() as the fallback for a /reload mid-combat.
+local function ShouldShowInCombat()
+  return GetShapeshiftFormID() == CAT_FORM_ID and (Addon.inCombat or InCombatLockdown())
+end
 local Bar            -- StatusBar frame (set in CreateEnergyBar)
 
 -- LibSharedMedia-3.0 (embedded via Libs/embeds.xml, see .toc) is
@@ -221,7 +249,7 @@ end
 function Addon:OnDatabaseShutdown()
   self.isShuttingDown = true
   self:UnregisterAllEvents()
-  if Bar and Bar.stateTicker then Bar.stateTicker:Hide() end
+  if self.previewTicker then self.previewTicker:Cancel() end
   if LSM then LSM.UnregisterCallback(self, "LibSharedMedia_Registered") end
 end
 
@@ -258,7 +286,7 @@ function Addon:OnEnable()
   self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnded")
   -- Bar/rows are combat-gated (see OnShapeshift) — refresh visibility the
   -- instant combat starts, don't wait for the next shapeshift/aura event.
-  self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnShapeshift")
+  self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStarted")
   -- Re-applies LSM-dependent visuals once everything has fully loaded (see
   -- OnPlayerEnteringWorld) — fixes the saved bar texture/border/font
   -- sometimes reverting to the default after /reload.
@@ -271,10 +299,10 @@ end
 
 function Addon:OnDisable()
   self:UnregisterAllEvents()
+  self:SetPreviewMode(false)
   if Bar then
     Bar:Hide()
     Bar.bg:Hide()
-    if Bar.stateTicker then Bar.stateTicker:Hide() end
     if Bar.debuffContainers then
       for _, container in ipairs(Bar.debuffContainers) do
         container:SetEnabled(false)
@@ -371,25 +399,6 @@ function Addon:CreateEnergyBar()
 
   Bar:Hide()
   bg:Hide()
-
-  -- Dedicated, never-hidden driver frame that re-evaluates combat/
-  -- shapeshift state every 0.5s and calls OnShapeshift. Needed because a
-  -- hidden frame never receives OnUpdate at all — once combat-gating hides
-  -- Bar (see OnShapeshift), Bar's own OnUpdate ticker above can't fire
-  -- again to notice combat resumed, so a discrete event (PLAYER_REGEN_
-  -- DISABLED/ENABLED, UPDATE_SHAPESHIFT_FORM) is the only thing that can
-  -- re-show it — and if one of those is ever missed/reordered (e.g. brief
-  -- regen-enabled blips between back-to-back mob pulls), the Bar stays
-  -- stuck hidden despite being back in combat. This ticker makes the state
-  -- self-healing instead of purely event-driven.
-  Bar.stateTicker = CreateFrame("Frame")
-  Bar.stateTicker._elapsed = 0
-  Bar.stateTicker:SetScript("OnUpdate", function(_, elapsed)
-    Bar.stateTicker._elapsed = Bar.stateTicker._elapsed + elapsed
-    if Bar.stateTicker._elapsed < 0.5 then return end
-    Bar.stateTicker._elapsed = 0
-    Addon:OnShapeshift()
-  end)
 end
 
 -------------------------------------------------------------------------------
@@ -697,7 +706,7 @@ function Addon:CreateDebuffAuraContainers()
   end
 end
 
--- Pushes today's DEBUFF_SPELL_IDS / shapeshift / target state into each
+-- Pushes today's DEBUFF_SPELL_IDS / Cat Form + combat / target state into each
 -- debuff slot container. Safe to call live, including mid-combat — these
 -- are the same container-level filter/unit setters ThreatPlates calls from
 -- plain addon code on every target change (only frame *creation* above is
@@ -715,12 +724,12 @@ function Addon:UpdateDebuffContainerFilters()
     return
   end
 
-  local inCat = GetShapeshiftFormID() == CAT_FORM_ID
+  local showRow = ShouldShowInCombat()
   for i = 1, NUM_DEBUFF_SLOTS do
     local container = Bar.debuffContainers[i]
     local spellID = DEBUFF_SPELL_IDS[i]
     if container then
-      if inCat and spellID and spellID > 0 then
+      if showRow and spellID and spellID > 0 then
         container:SetUnit("target")
         container:SetAuraGroupFilterString("main", "HARMFUL|PLAYER")
         container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = { [spellID] = true } })
@@ -780,7 +789,7 @@ function Addon:CreateBuffAuraContainers()
   end
 end
 
--- Pushes today's PLAYER_BUFF_SPELL_IDS / shapeshift state into each buff
+-- Pushes today's PLAYER_BUFF_SPELL_IDS / Cat Form + combat state into each buff
 -- slot container. Safe to call live (same reasoning as UpdateDebuffContainerFilters).
 function Addon:UpdateBuffContainerFilters()
   if not HasAuraContainers or not Bar.buffContainers then return end
@@ -793,12 +802,12 @@ function Addon:UpdateBuffContainerFilters()
     return
   end
 
-  local inCat = GetShapeshiftFormID() == CAT_FORM_ID
+  local showRow = ShouldShowInCombat()
   for i = 1, NUM_PLAYER_BUFF_SLOTS do
     local container = Bar.buffContainers[i]
     local spellID = PLAYER_BUFF_SPELL_IDS[i]
     if container then
-      if inCat and spellID and spellID > 0 then
+      if showRow and spellID and spellID > 0 then
         container:SetUnit("player")
         container:SetAuraGroupFilterString("main", "HELPFUL|PLAYER")
         container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = { [spellID] = true } })
@@ -863,7 +872,7 @@ function Addon:CreateCooldownBuffAuraContainer()
   Bar.cooldownBuffContainer = container
 end
 
--- Pushes today's COOLDOWN_BUFF_SPELL_IDS / shapeshift state into the container.
+-- Pushes today's COOLDOWN_BUFF_SPELL_IDS / Cat Form + combat state into the container.
 -- Safe to call live (same reasoning as UpdateBuffContainerFilters).
 function Addon:UpdateCooldownBuffContainerFilters()
   if not HasAuraContainers or not Bar.cooldownBuffContainer then return end
@@ -876,8 +885,8 @@ function Addon:UpdateCooldownBuffContainerFilters()
     return
   end
 
-  local inCat = GetShapeshiftFormID() == CAT_FORM_ID
-  if not inCat then
+  local showRow = ShouldShowInCombat()
+  if not showRow then
     container:SetEnabled(false)
     return
   end
@@ -1089,10 +1098,11 @@ end
 -- texture lookup — safe regardless of combat/aura state) plus a dummy
 -- Cooldown (random 1-15s per icon, set via plain Cooldown:SetCooldown —
 -- never SetCooldownFromDurationObject/secret aura data). Shows/hides the
--- whole set based on Addon.previewModeActive. This is called every 0.5s (via
--- OnShapeshift's stateTicker), so each frame only re-rolls/restarts its
--- countdown once the previous one has actually run out — otherwise it'd
--- get reset to full every tick and never reach 0.
+-- whole set based on Addon.previewModeActive. This runs on every OnShapeshift/
+-- UpdateBar call and every 0.5s from the Config Mode ticker (see
+-- SetPreviewMode), so each frame only re-rolls/restarts its countdown once the
+-- previous one has actually run out — otherwise it'd get reset to full on
+-- every call and never reach 0.
 function Addon:UpdatePreviewFrames()
   if not Bar or not Bar.previewDebuff then return end
 
@@ -1359,6 +1369,7 @@ end
 -- containers' filters/unit/enabled state. Called once from OnEnable and
 -- again on PLAYER_REGEN_ENABLED in case OnEnable itself ran in combat.
 function Addon:OnCombatEnded()
+  self.inCombat = false
   if not Bar then return end
 
   if not Bar.debuffContainers or #Bar.debuffContainers == 0 then
@@ -1387,6 +1398,17 @@ function Addon:OnCombatEnded()
   self:OnShapeshift()
 end
 
+-- PLAYER_REGEN_DISABLED itself is the "combat started" signal. Don't rely on
+-- InCombatLockdown() alone inside this handler: with the polling ticker gone
+-- nothing re-checks it later, and the Bar stayed hidden in real combat while
+-- the icon rows (which don't depend on it) showed up. Remembered here and
+-- cleared in OnCombatEnded; OnShapeshift still also honors
+-- InCombatLockdown() for a /reload mid-combat.
+function Addon:OnCombatStarted()
+  self.inCombat = true
+  self:OnShapeshift()
+end
+
 function Addon:OnShapeshift()
   if not Bar then
     return
@@ -1395,7 +1417,7 @@ function Addon:OnShapeshift()
   -- Config Mode force-shows the Bar regardless of shapeshift form or combat
   -- state — the whole point is positioning everything without needing to
   -- actually be in Cat Form or in combat.
-  if (GetShapeshiftFormID() == CAT_FORM_ID and InCombatLockdown()) or Addon.previewModeActive then
+  if ShouldShowInCombat() or Addon.previewModeActive then
     Bar:Show()
     Bar.bg:Show()
     RefreshValue()
@@ -1409,8 +1431,8 @@ function Addon:OnShapeshift()
     end
   end
 
-  -- All three gate themselves on the current shapeshift form (and Config
-  -- Mode) internally.
+  -- All three gate themselves on Cat Form + combat (ShouldShowInCombat) and
+  -- Config Mode internally.
   self:UpdateDebuffContainerFilters()
   self:UpdateBuffContainerFilters()
   self:UpdateCooldownBuffContainerFilters()

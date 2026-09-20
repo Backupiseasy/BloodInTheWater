@@ -4,3 +4,4 @@
 * Added a fallback to the bundled border, texture and font when the one selected in the options is no longer available.
 * Changed the default layout, size, colors and positions of all bars and icon rows.
 * Fixed resetting, copying or switching a profile not applying the settings until the UI is reloaded.
+* Fixed the debuff, proc and cooldown icons showing outside of combat while in Cat Form.
