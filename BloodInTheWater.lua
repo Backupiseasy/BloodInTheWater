@@ -1521,27 +1521,37 @@ end
 -- /bitwdebug). Prints exactly the state UpdateDebuffContainerFilters
 -- branches on, so a "no icon" report can be diagnosed without guessing:
 -- disabled slot (spellID 0), not in Cat Form, no target selected, or the
--- container/AddAuraGroup itself never having been created.
+-- container/AddAuraGroup itself never having been created — plus the combat/
+-- Config Mode gate and whether each slot's container is enabled. Deliberately
+-- no per-aura "is it on the target" lookup: GetUnitAuraBySpellID returned nil
+-- for auras that were visibly shown in combat (tested in-game), so it can't
+-- be trusted there.
 function Addon:DebugDumpDebuffs()
-  print("|cff00ff00[BiTW]|r HasAuraContainers=" .. tostring(HasAuraContainers))
-  print("|cff00ff00[BiTW]|r InCat=" .. tostring(GetShapeshiftFormID() == CAT_FORM_ID)
+  local prefix = "|cff00ff00[BiTW]|r "
+  print(prefix .. "HasAuraContainers=" .. tostring(HasAuraContainers))
+  print(prefix .. "InCat=" .. tostring(GetShapeshiftFormID() == CAT_FORM_ID)
     .. " UnitExists(target)=" .. tostring(UnitExists("target"))
-    .. " InCombatLockdown=" .. tostring(InCombatLockdown()))
+    .. " InCombatLockdown=" .. tostring(InCombatLockdown())
+    .. " inCombat(flag)=" .. tostring(self.inCombat)
+    .. " ShouldShowInCombat=" .. tostring(ShouldShowInCombat())
+    .. " ConfigMode=" .. tostring(self.previewModeActive))
   if not Bar then
-    print("|cff00ff00[BiTW]|r Bar not created yet.")
+    print(prefix .. "Bar not created yet.")
     return
   end
   if not Bar.debuffContainers then
-    print("|cff00ff00[BiTW]|r Bar.debuffContainers not created yet (out-of-combat creation may not have run).")
+    print(prefix .. "Bar.debuffContainers not created yet (out-of-combat creation may not have run).")
     return
   end
+
   for i = 1, NUM_DEBUFF_SLOTS do
     local container = Bar.debuffContainers[i]
     local spellID = DEBUFF_SPELL_IDS[i]
     local frameCount = container and container.GetAuraGroupFrameCount and container:GetAuraGroupFrameCount("main")
+    local enabled = container and container.IsEnabled and tostring(container:IsEnabled()) or "n/a"
     print(string.format(
-      "|cff00ff00[BiTW]|r Slot %d: spellID=%s container=%s poolFrameCount=%s",
-      i, tostring(spellID), tostring(container ~= nil), tostring(frameCount)
+      "%sSlot %d: spellID=%s container=%s enabled=%s poolFrameCount=%s",
+      prefix, i, tostring(spellID), tostring(container ~= nil), enabled, tostring(frameCount)
     ))
   end
 end
