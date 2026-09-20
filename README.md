@@ -39,11 +39,6 @@ Type `/bitw` to open the configuration dialog.
 
 Report bugs or feature requests via the comments section on the CurseForge project page.
 
-## Requirements
-
-- [Ace3](https://www.curseforge.com/wow/addons/ace3) (required, load it alongside BitW)
-- [LibSharedMedia-3.0](https://www.curseforge.com/wow/addons/libsharedmedia-3-0) (optional — enables extra bar texture/border/font choices; falls back to defaults if missing)
-
 ## License
 
 All Rights Reserved.

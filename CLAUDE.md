@@ -28,10 +28,16 @@ or call must be a field/method on `Addon` (e.g. `Addon.previewModeActive`,
 ## Framework
 
 Ace3 (`AceAddon-3.0`, `AceEvent-3.0`, `AceConsole-3.0`, `AceDB-3.0`,
-`AceConfig-3.0`, `AceConfigDialog-3.0`, `AceDBOptions-3.0`) — `RequiredDeps`.
-`LibSharedMedia-3.0` — `OptionalDeps`, guarded everywhere with
-`LibStub("LibSharedMedia-3.0", true)` and a fallback (default font/texture)
-when missing. Never embed copies of either inside this addon.
+`AceConfig-3.0`, `AceConfigDialog-3.0`, `AceDBOptions-3.0`) and
+`LibSharedMedia-3.0` are **embedded** via `Libs/embeds.xml` (loaded first in
+the `.toc`). No `RequiredDeps`/`OptionalDeps` — a missing standalone Ace3
+addon once disabled BitW in-game. `LibSharedMedia-3.0` is still accessed with
+`LibStub("LibSharedMedia-3.0", true)` and a fallback (default font/texture).
+
+`Libs/` is git-ignored (except `embeds.xml`); the packager fills it from the
+`externals:` in `.pkgmeta` (short form = trunk HEAD, like ThreatPlates). For
+local in-game testing, `Libs/` must be filled by hand from the same sources —
+adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 
 ## Options tabs (Options.lua, in order)
 

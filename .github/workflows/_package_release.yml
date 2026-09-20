@@ -44,7 +44,9 @@ jobs:
         # the packager builds only that one flavor by default - no per-flavor matrix or -g
         # flag needed. If Classic/Cata/Mists support is ever added via "## Interface-<Type>:"
         # lines in the TOC, restrict this build to Retail only with:
-        #   args: -e -l -n "BloodInTheWater-{project-version}" -g retail
+        #   args: -l -n "BloodInTheWater-{project-version}" -g retail
+        # Do NOT add "-e" here: it skips the checkout of the .pkgmeta externals, which would
+        # ship the release without the embedded Libs/ (Ace3, LibSharedMedia).
         uses: BigWigsMods/packager@v2
         with:
-          args: -e -l -n "BloodInTheWater-{project-version}"
+          args: -l -n "BloodInTheWater-{project-version}"

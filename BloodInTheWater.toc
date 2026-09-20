@@ -19,8 +19,8 @@
 ## Category: Combat
 
 ## X-Curse-Project-ID: 1698812
-## RequiredDeps: Ace3
-## OptionalDeps: LibSharedMedia-3.0
+
+Libs\embeds.xml
 
 BloodInTheWater.lua
 Options.lua
