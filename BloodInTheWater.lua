@@ -19,7 +19,7 @@ local Defaults = {
     -- ADDON_FOLDER/LSM:Register above), not the SharedMedia data addon.
     barTexture       = "Smooth",
     barColor         = {0.949, 1, 0.043, 1}, -- energy bar fill color + alpha
-    barFontSize      = 24,               -- energy value number font size (points)
+    barFontSize      = 18,              -- energy value number font size (points)
     barBorderTexture = "PlainBorder",
     barBorderSize    = 16,               -- edge thickness (px)
     barBorderInset   = 0,                -- offset of the edge from the bar's own outer edge (px)
