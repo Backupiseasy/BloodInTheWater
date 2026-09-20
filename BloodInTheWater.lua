@@ -184,6 +184,15 @@ function Addon:OnInitialize()
   self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileRefresh")
   self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileRefresh")
   self.db.RegisterCallback(self, "OnProfileReset", "OnProfileRefresh")
+  -- PLAYER_LOGOUT (also fired by /reload) makes AceDB strip the defaults out
+  -- of db.profile — any handler still reading them afterwards would hit nil
+  -- values, so stop reacting to anything once the database shuts down.
+  self.db.RegisterCallback(self, "OnDatabaseShutdown", "OnDatabaseShutdown")
+  -- Media registered after this addon loaded (other addons' LSM entries)
+  -- must re-trigger the LSM-dependent visuals — see OnMediaRegistered.
+  if LSM then
+    LSM.RegisterCallback(self, "LibSharedMedia_Registered", "OnMediaRegistered")
+  end
 
   -- Every spell ID (target debuffs, player buffs, own cooldowns) is
   -- user-configured in Options — all rows are addon-owned frames, never
@@ -206,6 +215,28 @@ function Addon:OnProfileRefresh()
   self:UpdateBar()
   self:RefreshComboPoints()
   LibStub("AceConfigRegistry-3.0"):NotifyChange("BloodInTheWater")
+end
+
+-- AceDB fires this right before PLAYER_LOGOUT strips the profile defaults.
+function Addon:OnDatabaseShutdown()
+  self.isShuttingDown = true
+  self:UnregisterAllEvents()
+  if Bar and Bar.stateTicker then Bar.stateTicker:Hide() end
+  if LSM then LSM.UnregisterCallback(self, "LibSharedMedia_Registered") end
+end
+
+-- LSM fires this once per registered media entry, i.e. hundreds of times in a
+-- burst while SharedMedia-style addons load — coalesce them into a single
+-- refresh on the next frame.
+function Addon:OnMediaRegistered()
+  if self.mediaRefreshPending then return end
+  self.mediaRefreshPending = true
+  C_Timer.After(0, function()
+    self.mediaRefreshPending = false
+    if not self.isShuttingDown then
+      self:RefreshMedia()
+    end
+  end)
 end
 
 function Addon:OnEnable()
@@ -1400,9 +1431,16 @@ end
 -- re-applying here picks up the real saved choice instead of the
 -- fallback sticking until the user reopens Options.
 function Addon:OnPlayerEnteringWorld()
+  self:RefreshMedia()
+end
+
+-- Re-applies every LSM-dependent visual (bar texture/border, fonts). Also
+-- driven by LibSharedMedia_Registered for media that shows up later still.
+function Addon:RefreshMedia()
   self:ApplyBarAppearance()
   self:ApplyGlobalFont()
   self:ReapplyLiveAuraButtonSettings()
+  self:ReapplyLiveIconFrameFonts()
 end
 
 function Addon:OnUnitAura(event, unit)
