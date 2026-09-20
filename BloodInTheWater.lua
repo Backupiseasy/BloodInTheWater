@@ -178,6 +178,13 @@ function Addon:OnInitialize()
   -- Initialize persistent database
   self.db = LibStub("AceDB-3.0"):New("BloodInTheWaterDB", Defaults, true)
 
+  -- The Profiles tab (AceDBOptions) only swaps/copies/resets the saved data
+  -- underneath db.profile — nothing repaints the live frames or the open
+  -- config dialog by itself, so re-apply everything on every profile change.
+  self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileRefresh")
+  self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileRefresh")
+  self.db.RegisterCallback(self, "OnProfileReset", "OnProfileRefresh")
+
   -- Every spell ID (target debuffs, player buffs, own cooldowns) is
   -- user-configured in Options — all rows are addon-owned frames, never
   -- Blizzard's own cooldown/aura viewer frames (see CreateEnergyBar).
@@ -191,6 +198,14 @@ function Addon:OnInitialize()
   -- Register slash command /bitw
   self:RegisterChatCommand("bitw", "OpenConfig")
   self:RegisterChatCommand("bitwdebug", "DebugDumpDebuffs")
+end
+
+-- Re-applies the (new) active profile to every live frame and refreshes the
+-- open config dialog. Fired by AceDB on profile switch/copy/reset.
+function Addon:OnProfileRefresh()
+  self:UpdateBar()
+  self:RefreshComboPoints()
+  LibStub("AceConfigRegistry-3.0"):NotifyChange("BloodInTheWater")
 end
 
 function Addon:OnEnable()
