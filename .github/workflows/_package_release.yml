@@ -39,6 +39,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.ref }}
 
+      - name: Verify changelog placeholder exists
+        # CHANGELOG.md keeps "# @project-version@ (@build-time@)" as its heading. The packager
+        # only knows @project-version@ - @build-time@ is our own placeholder, replaced in the
+        # next step. BloodInTheWater_Changes.log is not touched: its entries carry a literal
+        # date written at creation time (see CLAUDE.md's changelog workflow).
+        run: |
+          grep -q '@build-time@' CHANGELOG.md || { echo "::error file=CHANGELOG.md::Missing @build-time@ placeholder"; exit 1; }
+
+      - name: Update build date in release changelog
+        run: sed -i "s/@build-time@/$(date +%Y-%m-%d)/" CHANGELOG.md
+
       - name: Create package
         # BloodInTheWater.toc declares a single "## Interface:" value (120100 - Retail), so
         # the packager builds only that one flavor by default - no per-flavor matrix or -g

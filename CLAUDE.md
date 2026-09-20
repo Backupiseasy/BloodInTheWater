@@ -184,7 +184,10 @@ Two files must stay in sync for every user-facing change:
   ```
 
 - `CHANGELOG.md` — mirrors **only** the entries of the current unreleased (top) version block in
-  `BloodInTheWater_Changes.log`; consumed by the packager via `# @project-version@ (@build-time@)`.
+  `BloodInTheWater_Changes.log`; keep its heading as `# @project-version@ (@build-time@)` —
+  the packager fills `@project-version@`, while `@build-time@` is our own placeholder that the
+  release workflow (`_package_release.yml`) replaces with the build date via `sed` (and fails the
+  run if it is missing). The `.log` keeps literal dates, it is not touched.
 
 Entry format: one `*`-bullet per logical change, starting with a capitalized past-tense verb (`Fixed`,
 `Added`, `Changed`, `Removed`, `Updated`; use `Hopefully fixed` when the fix is unverified), ending with
