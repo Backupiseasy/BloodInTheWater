@@ -878,7 +878,7 @@ function Addon:SetupOptions()
         }
       },
 
-      -- ── Cooldowns tab (Tiger's Fury/Berserk/Incarnation, own sorted AuraContainer) ──
+      -- ── Cooldowns tab (Tiger's Fury/Berserk/Incarnation, own icon+bar frames) ──
       cooldownBuffTab = {
         name = "Cooldowns",
         type = "group",
@@ -929,10 +929,174 @@ function Addon:SetupOptions()
                   local c = self.db.profile.cooldownBuffNormalColor
                   c[1], c[2], c[3] = r, g, b
                   self:ReapplyLiveAuraButtonSettings()
-                  self:ReapplyLiveIconFrameFonts()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              durationRowSpacer = GetSpacerEntry(3)
+              durationRowSpacer = GetSpacerEntry(3),
+              barColorsLabel = {
+                name = "Bar Colors:",
+                desc = "WoW addons can't sample a spell icon's actual pixel data, so these are hand-picked to approximate each icon's most striking color — override either of them if they're off.",
+                type = "description",
+                order = 4,
+                width = 1,
+                fontSize = "medium"
+              },
+              cooldownBuffBarColor1 = {
+                name = "Tiger's Fury",
+                type = "color",
+                hasAlpha = true,
+                order = 5,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.cooldownBuffBarColors[1]
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.cooldownBuffBarColors[1]
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              cooldownBuffBarColor2 = {
+                name = "Berserk",
+                type = "color",
+                hasAlpha = true,
+                order = 6,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.cooldownBuffBarColors[2]
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.cooldownBuffBarColors[2]
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              cooldownBuffBarColor3 = {
+                name = "Incarnation",
+                type = "color",
+                hasAlpha = true,
+                order = 7,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.cooldownBuffBarColors[3]
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.cooldownBuffBarColors[3]
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              barColorsRowSpacer = GetSpacerEntry(8),
+              cooldownBuffBarTexture = {
+                name = "Bar Texture",
+                desc = "Fill texture of each cooldown-buff bar (LibSharedMedia)",
+                type = "select",
+                order = 9,
+                width = 1,
+                values = function()
+                  local t = {}
+                  if LSM then
+                    for _, name in ipairs(LSM:List("statusbar")) do
+                      t[name] = name
+                    end
+                  end
+                  return t
+                end,
+                get = function()
+                  return self.db.profile.cooldownBuffBarTexture
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarTexture = val
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              barTextureRowSpacer = GetSpacerEntry(10),
+              cooldownBuffBarBorderTexture = {
+                name = "Border Texture",
+                desc = "Border texture drawn around each fill bar (LibSharedMedia). Applies live to the Config Mode preview; already-shown real bars need /reload.",
+                type = "select",
+                order = 11,
+                width = 1,
+                values = function()
+                  local t = {}
+                  if LSM then
+                    for _, name in ipairs(LSM:List("border")) do
+                      t[name] = name
+                    end
+                  end
+                  return t
+                end,
+                get = function()
+                  return self.db.profile.cooldownBuffBarBorderTexture
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarBorderTexture = val
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              cooldownBuffBarBorderColor = {
+                name = "Border Color",
+                desc = "Color and opacity of the border",
+                type = "color",
+                hasAlpha = true,
+                order = 12,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.cooldownBuffBarBorderColor
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.cooldownBuffBarBorderColor
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              cooldownBuffBarBorderSize = {
+                name = "Border Thickness",
+                desc = "Edge thickness of the border texture (pixels). Applies live to the Config Mode preview; already-shown real bars need /reload.",
+                type = "range",
+                min = 1,
+                max = 32,
+                step = 1,
+                order = 13,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffBarBorderSize
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarBorderSize = val
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              cooldownBuffBarBorderInset = {
+                name = "Border Position (Inset)",
+                desc = "Offset of the border from the bar's own outer edge (pixels) — negative expands the border outward, positive pulls it inward. Applies live to the Config Mode preview; already-shown real bars need /reload.",
+                type = "range",
+                min = -20,
+                max = 20,
+                step = 1,
+                order = 14,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffBarBorderInset
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarBorderInset = val
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              borderRowSpacer = GetSpacerEntry(15)
             }
           },
           layoutGroup = {
@@ -976,8 +1140,8 @@ function Addon:SetupOptions()
                 end
               },
               cooldownBuffSpacing = {
-                name = "Spacing",
-                desc = "Vertical spacing between stacked cooldown-buff icons (pixels) — stacked top-to-bottom, not a horizontal row",
+                name = "Row Spacing",
+                desc = "Vertical spacing between stacked cooldown-buff rows (pixels) — stacked top-to-bottom, not a horizontal row",
                 type = "range",
                 min = 0,
                 max = 25,
@@ -992,7 +1156,73 @@ function Addon:SetupOptions()
                   self:UpdateBar()
                 end
               },
-              layoutRowSpacer = GetSpacerEntry(4)
+              posRowSpacer = GetSpacerEntry(4),
+              cooldownBuffBarWidth = {
+                name = "Bar Width",
+                desc = "Width of the fill bar next to each cooldown-buff icon (pixels)",
+                type = "range",
+                min = 20,
+                max = 300,
+                step = 1,
+                order = 5,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffBarWidth
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarWidth = val
+                  self:UpdateBar()
+                end
+              },
+              cooldownBuffBarHeight = {
+                name = "Bar Height",
+                desc = "Height of the fill bar next to each cooldown-buff icon (pixels)",
+                type = "range",
+                min = 8,
+                max = 60,
+                step = 1,
+                order = 6,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffBarHeight
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffBarHeight = val
+                  self:UpdateBar()
+                end
+              },
+              cooldownBuffIconGap = {
+                name = "Bar Spacing",
+                desc = "Horizontal spacing between the icon and the fill bar (pixels)",
+                type = "range",
+                min = 0,
+                max = 40,
+                step = 1,
+                order = 7,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffIconGap
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffIconGap = val
+                  self:UpdateBar()
+                end
+              },
+              barSizeRowSpacer = GetSpacerEntry(8),
+              cooldownBuffIconOnRight = {
+                name = "Icon on Right",
+                desc = "Shows the icon to the right of the fill bar instead of to the left",
+                type = "toggle",
+                order = 9,
+                width = 1,
+                get = function()
+                  return self.db.profile.cooldownBuffIconOnRight
+                end,
+                set = function(_, val)
+                  self.db.profile.cooldownBuffIconOnRight = val
+                  self:UpdateBar()
+                end
+              }
             }
           }
         }
