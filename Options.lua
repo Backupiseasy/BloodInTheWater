@@ -477,6 +477,7 @@ function Addon:SetupOptions()
                     end
                   },
                   cpBufferFontSize = {
+                    hidden = function() return not Addon:HasComboPointBuffer() end,
                     name = "Overflow Points",
                     desc = "Font size of the overflow buffer indicator (points)",
                     type = "range",
@@ -535,6 +536,8 @@ function Addon:SetupOptions()
                 type = "group",
                 inline = true,
                 order = 2,
+                -- No combo point overflow buffer on WoW Forever.
+                hidden = function() return not Addon:HasComboPointBuffer() end,
                 args = {
                   bufferLabel = {
                     name = "Overflow Buffer:",
@@ -605,7 +608,10 @@ function Addon:SetupOptions()
                 type = "description",
                 order = 4,
                 width = 1,
-                fontSize = "medium"
+                fontSize = "medium",
+                -- Vanilla rules have no pandemic (early-refresh) mechanic — confirmed in-game the glow never
+                -- triggers on Forever.
+                hidden = function() return Addon.IS_FOREVER end,
               },
               pandemicColor = {
                 name = "Color",
@@ -614,6 +620,7 @@ function Addon:SetupOptions()
                 hasAlpha = true,
                 order = 5,
                 width = 1,
+                hidden = function() return Addon.IS_FOREVER end,
                 get = function()
                   local c = self.db.profile.pandemicColor
                   return c[1], c[2], c[3], c[4]
@@ -631,6 +638,7 @@ function Addon:SetupOptions()
                 type = "select",
                 order = 6,
                 width = 1,
+                hidden = function() return Addon.IS_FOREVER end,
                 values = {
                   custom = "Simple Border",
                   wow = "WoW Border",
@@ -709,6 +717,8 @@ function Addon:SetupOptions()
                 type = "group",
                 inline = true,
                 order = 3,
+                -- Moonfire isn't tracked on WoW Forever (unused slot, see Addon:IsSlotUsed).
+                hidden = function() return not Addon:IsSlotUsed("debuff", 3) end,
                 args = {
                   slot3Label = {
                     name = "Moonfire:",
@@ -812,6 +822,8 @@ function Addon:SetupOptions()
                 type = "group",
                 inline = true,
                 order = 2,
+                -- Predatory Swiftness doesn't exist on WoW Forever (unused slot, see Addon:IsSlotUsed).
+                hidden = function() return not Addon:IsSlotUsed("buff", 2) end,
                 args = {
                   slot2Label = {
                     name = "Predatory Swiftness:",
@@ -838,6 +850,8 @@ function Addon:SetupOptions()
                 type = "group",
                 inline = true,
                 order = 3,
+                -- Forever's Clearcasting (Omen of Clarity) never stacks, so there's nothing to position.
+                hidden = function() return Addon.IS_FOREVER end,
                 args = {
                   stacksLabel = {
                     name = "Stacks:",
@@ -877,7 +891,10 @@ function Addon:SetupOptions()
             order = 1,
             args = {
               cooldownBuffDesc = {
-                name = "Tracks Tiger's Fury, Berserk, and Incarnation.",
+                name = function()
+                  return Addon.IS_FOREVER and "Tracks Tiger's Fury and Berserk."
+                    or "Tracks Tiger's Fury, Berserk, and Incarnation."
+                end,
                 type = "description",
                 order = 1,
                 fontSize = "medium"

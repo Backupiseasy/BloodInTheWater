@@ -35,6 +35,7 @@ Type `/bitw` to open the configuration dialog.
 ## Known limitations
 
 - Druid-only, Cat Form-only — by design, not a bug
+- Supports Retail and WoW Forever. On WoW Forever Rake, Rip, Tiger's Fury (all ranks), Berserk and Clearcasting are tracked; Moonfire, Predatory Swiftness, Incarnation and the overflow buffer don't exist there
 
 ## Feedback & Issues
 
