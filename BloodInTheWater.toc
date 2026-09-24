@@ -1,12 +1,9 @@
-# Retail-only addon — single "## Interface:" line below, no Classic support.
-# Reference values for the Classic variants, in case that ever changes
-# (warcraft.wiki.gg/wiki/TOC_format, checked 2026-09):
-#   Vanilla (Classic Era): 11509
-#   TBC Classic:           20506
-#   Wrath Classic:         30405
-#   Cata Classic:          40402
-#   Mists Classic:         50504
-## Interface: 120100
+# Retail + WoW Forever (Blizzard's Classic-rules client on the modern engine, reports
+# Interface 16001). No Classic Era/TBC/Wrath/Cata/Mists support
+# (those clients lack the AuraContainer API this addon is built on).
+# Reference values (warcraft.wiki.gg/wiki/TOC_format, checked 2026-09):
+#   Vanilla 11509, TBC 20506, Wrath 30405, Cata 40402, Mists 50504
+## Interface: 120100, 16001
 
 ## Title: Blood in the Water
 ## Version: @project-version@
@@ -14,7 +11,6 @@
 ## Author: Backupzzz
 
 ## SavedVariables: BloodInTheWaterDB
-## AddonCompartmentFunc: BloodInTheWater_OnAddonCompartmentClick
 ## IconTexture: Interface\AddOns\BloodInTheWater\Media\bitw_logo.png
 ## Category: Combat
 

@@ -2,7 +2,7 @@
 
 ## What this is
 
-WoW AddOn (Retail, `## Interface: 120100`). Druid-only, Cat Form-only energy
+WoW AddOn (Retail `## Interface: 120100` + WoW Forever `16001`, see "WoW Forever" below). Druid-only, Cat Form-only energy
 bar with combo points, target-debuff/player-buff/cooldown-buff icon rows.
 Everything is an addon-owned frame or Blizzard's `AuraContainer`/`AuraButton`
 API — never Blizzard's own Cooldown Manager (CDM) frames. Config via `/bitw`.
@@ -29,8 +29,8 @@ or call must be a field/method on `Addon` (e.g. `Addon.previewModeActive`,
 ## Framework
 
 Ace3 (`AceAddon-3.0`, `AceEvent-3.0`, `AceConsole-3.0`, `AceDB-3.0`,
-`AceConfig-3.0`, `AceConfigDialog-3.0`, `AceDBOptions-3.0`) and
-`LibSharedMedia-3.0` are **embedded** via `Libs/embeds.xml` (loaded first in
+`AceConfig-3.0`, `AceConfigDialog-3.0`, `AceDBOptions-3.0`, `AceGUI-3.0`) and
+`LibSharedMedia-3.0`, plus their dependencies `LibStub` and `CallbackHandler-1.0`, are **embedded** via `Libs/embeds.xml` (loaded first in
 the `.toc`). No `RequiredDeps`/`OptionalDeps` — a missing standalone Ace3
 addon once disabled BitW in-game. `LibSharedMedia-3.0` is still accessed with
 `LibStub("LibSharedMedia-3.0", true)` and guarded with `if LSM`.
@@ -47,15 +47,85 @@ bundled asset needs an LSM registration **and** a fallback constant.
 local in-game testing, `Libs/` must be filled by hand from the same sources —
 adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 
+## WoW Forever
+
+"WoW Forever" is Blizzard's official Classic-rules client on the modern (Midnight-era) engine: it reports
+`WOW_PROJECT_ID == WOW_PROJECT_MAINLINE` but `GetClassicExpansionLevel() == 0` (Vanilla), Interface `16001`
+(in the TOC's Interface line next to Retail's), and has AuraContainers, secret values, `C_Spell`,
+`C_UnitAuras`. Background and the full list of pitfalls: the ThreatPlates repo's
+`Source/Wiki/wow-forever-compatibility.md`.
+
+**Implemented**
+
+- `Addon.IS_FOREVER` (same formula as ThreatPlates' `Init.lua`) picks the spell set. `Options.lua` reads it
+  plus `Addon:IsSlotUsed(row, i)` / `Addon:HasComboPointBuffer()` to hide rows that don't exist there.
+- Spell IDs live in `SPELL_SETS` (`RETAIL` / `FOREVER`); each slot is a **list** of aura IDs because every
+  Classic rank of Rake/Rip has its own ID. An empty list = unused slot (container/preview disabled, Options
+  row hidden). `DEBUFF_SPELL_SETS` etc. are the precomputed `includeSpellIDs` sets.
+- Forever tracks: Rake (1822, 1823, 1824, 9904), Rip (1079, 9492, 9493, 9752, 9894, 9896), Tiger's Fury
+  (5217, no ranks), Berserk (417141), Clearcasting (16870 — the proc buff; 16864 is the Omen of Clarity
+  talent). Not there: Moonfire (not tracked — not used in the Cat Form rotation), Predatory Swiftness,
+  Incarnation, combo point overflow buffer.
+  All IDs checked against Wowhead Forever: `https://nether.wowhead.com/forever/tooltip/spell/<id>` returns
+  JSON whose `buff` field is the aura the spell applies (same ID). Plain `www.wowhead.com` is
+  Cloudflare-blocked for scripts.
+- Player power is a secret value in combat (`UnitPower("player", ...)`, confirmed live in Cat Form/combat on
+  Forever — the one time this bar shows). `GetComboPoints("player", "target")` is just as secret when called
+  from this addon's (tainted) code — confirmed live; an earlier `/run print()` test that saw a plain number ran
+  untainted and is not comparable. `RefreshComboPoints` therefore never compares/branches on the value: it
+  shows it via `SetText` (C-side sink) directly, and colors it unconditionally via
+  `UnitPowerPercent("player", 4, false, curve)` with a step `ColorCurve` whose breakpoints are the 0/1-3/4/5+
+  tiers expressed as percent-of-max — no secret/plain branch. **Not** `LuaColorCurveObject:Evaluate(cp)` — `Evaluate` takes the secret `cp` as an explicit Lua
+  argument and is only `SecretArguments="AllowedWhenUntainted"`, so it throws the instant it's called in
+  combat (confirmed live: "Secret values are only allowed during untainted execution for this argument").
+  `UnitPowerPercent` reads the secret power value and evaluates the curve entirely C-side instead, so the
+  secret number never crosses into Lua as an argument — same pattern as ThreatPlates' `UnitHealthPercent(unit,
+  true, curve)` for health colors (`Elements/StatusText.lua`), not a curve's own `:Evaluate()`. No
+  `C_CurveUtil`/`Enum.LuaCurveType` existence guard — confirmed present on both supported clients (Retail
+  120100 and Forever 16001, both Midnight-engine; checked in `/bitwdebug`'s API table).
+- Combo point **count** source differs per client: Retail reads `UnitPower("player", 4)` (shared across
+  targets since patch 6.0.2); Forever reads `GetComboPoints("player", "target")` — confirmed live (former
+  `/bitwcp` probe, see Debugging) that Forever's `UnitPower("player", 4)` does not reset on a target switch, so the count stuck at the
+  previous target's value. The **color** still comes from `UnitPowerPercent` (i.e. `UnitPower`) on both
+  clients — the only secret-safe curve sink; there is none for `GetComboPoints`. Under Vanilla rules only one
+  target holds combo points, so both agree whenever the count is > 0; they only diverge right after a target
+  switch. `Addon:OnTargetChanged` therefore re-runs `RefreshComboPoints` (on every client — no power event is
+  guaranteed on a target switch) and, on Forever, then forces the plain `db.profile.cpColor0` color (a fresh
+  target is always at 0); the next combo-point event overwrites it correctly.
+- The combo point reset on a Forever target switch can arrive via `UNIT_POWER_UPDATE` instead of
+  `UNIT_POWER_FREQUENT` — both are registered, same handler (`OnPowerUpdate`).
+- `GetShapeshiftFormID() == 1` (`CAT_FORM_ID`) is Cat Form on Forever too — confirmed in-game in Cat Form.
+- Config Mode (preview with unused slots) works on Forever — confirmed in-game.
+- `UNIT_COMBO_POINTS` does not exist on Forever; combo points arrive via `UNIT_POWER_FREQUENT`/
+  `UNIT_POWER_UPDATE` (`COMBO_POINTS`), `PLAYER_TARGET_CHANGED` and the `PLAYER_REGEN_*`/shapeshift-driven `OnShapeshift` refresh (the old 0.5s
+  `Bar.stateTicker` was removed).
+- SavedVariables not loading on some Forever clients is a known client bug (see ThreatPlates' wiki, fixes
+  #21-#23) — not addon-fixable. Deliberately no workaround here; don't add one.
+- The auras really do show up under the Forever IDs listed above (multi-ID `includeSpellIDs` filters, incl.
+  in combat) — confirmed in-game.
+- Options tabs (hidden rows: Moonfire, Predatory Swiftness, stack text, overflow buffer, Incarnation text) —
+  confirmed in-game.
+- The Pandemic glow never triggers under Vanilla rules — confirmed in-game (Rake/Rip run their full duration,
+  glow never shows). Its 3 Options widgets (`pandemicLabel`/`pandemicColor`/`pandemicStyle`, Debuffs tab) are
+  now `hidden = function() return Addon.IS_FOREVER end` — the underlying `CreatePandemicGlow`/
+  `AddPandemicRegion` machinery is left in place (harmless, Blizzard's own Shown-state gate just never fires),
+  only the now-pointless config UI is hidden.
+
+**Still unverified in-game**:
+
+- The Retail code paths after the spell-table refactor (`SPELL_SETS.RETAIL`, list-based `includeSpellIDs`) —
+  no Retail regression test done yet.
+
 ## Options tabs (Options.lua, in order)
 
-1. **Energy Bar** — Layout (size/position), Appearance (texture/border/font size)
-2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer)
+1. **Energy Bar** — Appearance (texture/color, border texture/color/thickness/inset, font size), Layout (size/position)
+2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer — hidden on Forever)
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
-4. **Debuffs** — Rake/Rip/Moonfire position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style)
-5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, stack-count text position
-6. **Cooldowns** — Tiger's Fury/Berserk/Incarnation position, spacing, countdown color
-7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset)
+4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
+5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, stack-count text position (Predatory Swiftness and stack text hidden on Forever)
+6. **Cooldowns** — tracked-spells info text, one column position, spacing, countdown color (Tiger's Fury/Berserk/Incarnation; no Incarnation on Forever)
+7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
+   character starts on the shared `"Default"` profile; all profiles are available to all characters.
 
 Plus a "Toggle Config Mode" execute button at the top (order 0).
 
@@ -140,10 +210,12 @@ Registered in `Addon:OnInitialize()`:
 ## Critical WoW API facts
 
 - Druid check: `select(2, UnitClass("player")) == "DRUID"`, top of `OnInitialize`/`OnEnable`.
-- Energy: `UnitPower("player", 3)` / `UnitPowerMax("player", 3)` (talents raise the cap — always read max dynamically). Event: `UNIT_POWER_FREQUENT`, not `UNIT_POWER_UPDATE`.
+- Energy: `UnitPower("player", 3)` / `UnitPowerMax("player", 3)` (talents raise the cap — always read max dynamically). Event: `UNIT_POWER_FREQUENT` for energy/combo point
+  ticks; `UNIT_POWER_UPDATE` is registered too (same handler) because the Forever target-switch combo point
+  reset can arrive only there.
 - AceEvent has no `RegisterUnitEvent` — filter `unit == "player"` inside the handler.
 - **Never touch Blizzard's own `EssentialCooldownViewer`/`BuffIconCooldownViewer`** — tainted their secret aura data and crashed the client when tried. Every row here is addon-owned or `AuraContainer`-based instead.
-- Some aura fields (`applications`/`duration`/`expirationTime`) can be secret values — check `issecretvalue(...)` before use (see `RefreshComboPointBuffer`).
+- Some aura fields (`applications`/`duration`/`expirationTime`) and, on Forever, `UnitPower("player", ...)`/`GetComboPoints` can be secret values — check `issecretvalue(...)` (file-local `IsSecret`) before comparing/`tostring`-ing (see `RefreshComboPointBuffer`), or avoid Lua-side handling entirely and only pass the value to C-side sinks (see `RefreshComboPoints`). Passing one straight to `SetText`/`SetValue` is fine.
 - `BackdropTemplateMixin:SetBackdrop` doesn't reliably recompute a live-shown border in place — `SetBackdrop(nil)` then rebuild the full table on every change (see `Addon:ApplyBarAppearance()`). Don't "fix" a stuck border via `Hide()`/`Show()` toggling — caused a runaway recursive layout loop (OOM crash) once.
 - A freshly (re)built backdrop's border can settle back to full alpha a frame after `SetBackdrop` returns — reapply `SetBackdropBorderColor` once more via `C_Timer.After(0, ...)` to win that race (see `ApplyBarAppearance`).
 - LSM-registered media from other addons may not exist yet at this addon's own load — re-apply LSM-dependent visuals on `PLAYER_ENTERING_WORLD` too (`Addon:OnPlayerEnteringWorld`).
@@ -157,9 +229,15 @@ Registered in `Addon:OnInitialize()`:
 - File-global variables: UpperCamelCase (`Addon`, `Bar`, `Defaults`).
 - Local variables inside functions: lowerCamelCase.
 - All code and comments: English only.
-- No global (non-`local`) Lua variables except methods on `Addon` and the one
-  required plain global: `BloodInTheWater_OnAddonCompartmentClick` (Blizzard
-  calls Addon Compartment click handlers by name, not through the addon object).
+- No global (non-`local`) Lua variables except methods on `Addon`. The Addon
+  Compartment entry is registered at runtime via
+  `AddonCompartmentFrame:RegisterAddon` (`Addon:RegisterAddonCompartment()`,
+  Druids only) — deliberately **not** via the TOC's `AddonCompartmentFunc`,
+  which would list it for every class. Forever has an Addon Compartment too;
+  confirmed in-game that a Warrior gets no BitW entry and a Druid's entry
+  opens the options.
+- Non-Druids: `OnInitialize` registers only `/bitw` (→ `Addon:PrintDruidOnly()`,
+  a chat notice) and returns; no DB, frames, options or compartment entry.
 - When two code paths do near-identical setup for different widget types
   (e.g. `InitializeAuraButton` for real secure `AuraButton`s vs.
   `CreateIconFrame` for plain preview/Config-Mode frames), a fix to one's
@@ -212,6 +290,32 @@ top (unreleased) block.
 
 ## Debugging
 
-`/bitwdebug` → `Addon:DebugDumpDebuffs()` — dumps the target-debuff
-`AuraContainer` pipeline state (spell IDs, Cat Form, target, combat lockdown,
-pool frame counts) for diagnosing a "no icon showing" report.
+Both debug commands below are **disabled**: their `RegisterChatCommand` lines in `Addon:OnInitialize()` are
+commented out, the handler code is still in place. Uncomment those two lines to use them again.
+
+`/bitwdebug` → `Addon:DebugCheck()` — full WoW Forever compatibility report (client signals, API
+availability, Cat Form detection, energy/combo-point sources, event registration, spell-ID existence,
+assets, AuraContainer state), ending with `Addon:DebugDumpDebuffs()` — the
+target-debuff `AuraContainer` pipeline state (spell IDs, Cat Form, target, combat lockdown, pool frame
+counts) for diagnosing a "no icon showing" report. `/bitwdebug live [seconds]` counts which events
+really fire during a window.
+
+`/bitwauras` → `Addon:ToggleAuraWatch()` — toggles a watcher that prints spell ID + name of every new
+aura on the player (HELPFUL) / target (own HARMFUL) to chat; used to find the per-rank aura IDs of
+Rake/Rip/Tiger's Fury/Berserk/Clearcasting on WoW Forever. **Only works out of combat** — confirmed live
+on Forever that `C_UnitAuras.GetAuraDataByIndex` throws immediately at index 1 in combat
+("Auras cannot be accessed when secret while tainted by 'BloodInTheWater'"), because the whole call
+chain (slash command → `AceConsole` → this addon's code) is addon-tainted; it's not a partial degrade to
+`<secret>` fields, the call itself is refused. `ScanWatchedAuras` wraps the call in `pcall` and prints a
+one-line "aura data inaccessible" notice instead of crashing, then stops that unit's scan. Training
+dummies do **not** give an out-of-combat window on Midnight/Forever — confirmed live that hitting one
+still flips `PLAYER_REGEN_DISABLED` (contrary to older-expansion behavior), so `/bitwauras` can't capture
+a harmful-spell aura ID that way either. For a harmful spell's ID/ranks when no genuine out-of-combat
+capture is possible, use the Wowhead Forever tooltip lookup instead (same URL pattern as above) against
+known Classic rank spell IDs.
+
+A former `/bitwcp` combo-point probe (on-screen box fed straight from `UnitPower("player", 4)` via `SetText`,
+plus a chat log of `PLAYER_TARGET_CHANGED`/`UNIT_POWER_*` events) found the Forever `UnitPower` no-reset
+behavior; it has been removed.
+
+The debug commands are Forever-port diagnostics; trim them once the unverified items above are confirmed.

@@ -51,7 +51,7 @@ jobs:
         run: sed -i "s/@build-time@/$(date +%Y-%m-%d)/" CHANGELOG.md
 
       - name: Create package
-        # BloodInTheWater.toc declares a single "## Interface:" value (120100 - Retail), so
+        # BloodInTheWater.toc declares "## Interface: 120100, 16001" (Retail + WoW Forever, read natively by the client), so
         # the packager builds only that one flavor by default - no per-flavor matrix or -g
         # flag needed. If Classic/Cata/Mists support is ever added via "## Interface-<Type>:"
         # lines in the TOC, restrict this build to Retail only with:
