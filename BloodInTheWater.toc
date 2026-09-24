@@ -1,6 +1,5 @@
 # Retail + WoW Forever (Blizzard's Classic-rules client on the modern engine, reports
-# Interface 16001 - its own version climbs over time, so re-check via /bitwdebug if the
-# addon is ever flagged out of date there). No Classic Era/TBC/Wrath/Cata/Mists support
+# Interface 16001). No Classic Era/TBC/Wrath/Cata/Mists support
 # (those clients lack the AuraContainer API this addon is built on).
 # Reference values (warcraft.wiki.gg/wiki/TOC_format, checked 2026-09):
 #   Vanilla 11509, TBC 20506, Wrath 30405, Cata 40402, Mists 50504

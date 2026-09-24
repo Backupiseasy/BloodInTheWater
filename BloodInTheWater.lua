@@ -16,7 +16,7 @@ local Defaults = {
     -- Energy bar fill texture (LibSharedMedia "statusbar" key) and its
     -- border (LibSharedMedia "border" key + edge thickness/inset/color).
     -- "Smooth" is bundled by this addon itself (Media/Smooth.tga, see
-    -- ADDON_FOLDER/LSM:Register above), not the SharedMedia data addon.
+    -- ADDON_FOLDER/LSM:Register below), not the SharedMedia data addon.
     barTexture       = "Smooth",
     barColor         = {0.949, 1, 0.043, 1}, -- energy bar fill color + alpha
     barFontSize      = 18,              -- energy value number font size (points)
@@ -33,12 +33,12 @@ local Defaults = {
     cpColor1 = {1,   1,   0,   1},  -- 1-3 points : yellow
     cpColor4 = {1,   0.5, 0,   1},  -- 4 points   : orange
     cpColor5 = {1,   0,   0,   1},  -- 5 points   : red
-    -- Appearance tab: one shared LibSharedMedia font/typeface and one shared
-    -- icon size for every icon-based row (Debuffs/Buffs/Cooldown Buffs/Row
-    -- Top) — no per-row Font/IconSize duplication. Countdown-number size is
+    -- Icons tab: one shared LibSharedMedia font/typeface and one shared
+    -- icon size for every icon-based row (Debuffs/Proccs/Cooldowns) — no
+    -- per-row Font/IconSize duplication. Countdown-number size is
     -- derived from icon size (appearanceFontScale), not its own absolute
     -- point size.
-    appearanceFont      = "Cabin", -- LibSharedMedia font key (bundled, see ADDON_FOLDER above)
+    appearanceFont      = "Cabin", -- LibSharedMedia font key (bundled, see ADDON_FOLDER below)
     appearanceIconSize  = 32,                 -- icon width/height (px), shared everywhere
     appearanceFontScale = 0.6,                -- countdown font size = iconSize * this (0.1-1.0)
     -- Pandemic (DoT refresh window) glow — only meaningful for the target
@@ -205,9 +205,7 @@ local function SpellIdsText(ids)
   if not ids or #ids == 0 then return "unused" end
   return table.concat(ids, ",")
 end
--- Config Mode preview icons use a fixed, made-up duration — not real aura
--- data, so no secret-value concern; just plain Cooldown:SetCooldown numbers.
-local PREVIEW_DURATION = 60
+
 -- GetShapeshiftFormID() value for Cat Form. Spec-independent and stable
 -- across stance-bar reordering, unlike the positional GetShapeshiftForm()
 -- index (which shifts if not all forms are unlocked/visible).
@@ -300,9 +298,9 @@ function Addon:OnInitialize()
     LSM.RegisterCallback(self, "LibSharedMedia_Registered", "OnMediaRegistered")
   end
 
-  -- Every spell ID (target debuffs, player buffs, own cooldowns) is
-  -- user-configured in Options — all rows are addon-owned frames, never
-  -- Blizzard's own cooldown/aura viewer frames (see CreateEnergyBar).
+  -- Every spell ID (target debuffs, player buffs, cooldown buffs) is
+  -- hardcoded per client (SPELL_SETS) — all rows are addon-owned frames,
+  -- never Blizzard's own cooldown/aura viewer frames (see CreateEnergyBar).
 
   -- Create the energy bar.
   self:CreateEnergyBar()
@@ -312,9 +310,10 @@ function Addon:OnInitialize()
 
   -- Register slash command /bitw
   self:RegisterChatCommand("bitw", "OpenConfig")
-  self:RegisterChatCommand("bitwdebug", "DebugCheck")
-  self:RegisterChatCommand("bitwauras", "ToggleAuraWatch")
-  self:RegisterChatCommand("bitwcp", "ToggleComboPointWatch")
+  -- Forever-port diagnostics (see CLAUDE.md, "Debugging") — disabled for
+  -- release; uncomment to re-enable.
+  -- self:RegisterChatCommand("bitwdebug", "DebugCheck")
+  -- self:RegisterChatCommand("bitwauras", "ToggleAuraWatch")
 end
 
 -- Re-applies the (new) active profile to every live frame and refreshes the
@@ -445,7 +444,8 @@ function Addon:CreateEnergyBar()
   Bar.cpText = cpText
 
   -- Combo point overflow buffer indicator (e.g. Berserk banking CPs above
-  -- the cap). Hidden until the user configures a spell ID to watch.
+  -- the cap). Hidden until the overflow buff (CP_BUFFER_SPELL_ID) has
+  -- stacks; always hidden on clients without it (Forever).
   local cpBufferText = Bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   cpBufferText:SetPoint("CENTER", Bar, "CENTER", db.cpBufferPosX, db.cpBufferPosY)
   cpBufferText:SetTextColor(1, 0.85, 0.2, 1)
@@ -1065,8 +1065,8 @@ end
 -- demo/preview mechanism at all (it only ever shows real data for a real
 -- SetUnit() token), so faking it means bypassing AuraContainer completely
 -- and reusing the same plain Frame+Texture+Cooldown pattern instead. Created
--- once, lazily, the first time Config Mode is ever turned on (not
--- combat-gated — these are plain frames, not AuraContainers, so unlike
+-- once at startup from CreateEnergyBar, hidden until Config Mode is turned
+-- on (not combat-gated — these are plain frames, not AuraContainers, so unlike
 -- CreateDebuffAuraContainers this never needs to wait for combat to end).
 function Addon:CreatePreviewFrames()
   if Bar.previewDebuff then return end
@@ -1230,9 +1230,9 @@ end
 -- Helper functions
 -------------------------------------------------------------------------------
 
--- Applies the shared Appearance-tab font/typeface to the 3 plain FontStrings
+-- Applies the shared Icons-tab font/typeface to the 3 plain FontStrings
 -- the addon fully owns (Bar.text/cpText/cpBufferText) — unlike the
--- AuraButton/Row-Top-icon countdown texts, these have no create-time-only
+-- AuraButton countdown texts, these have no create-time-only
 -- restriction, so this is genuinely live: called once at creation and again
 -- whenever appearanceFont changes. Point sizes stay their own independent
 -- fields (cpFontSize/cpBufferFontSize) — only the typeface is shared here,
@@ -1403,32 +1403,24 @@ end
 -- Updates the combo point display (value + color).
 --
 -- Forever: UnitPower("player", 4) does not reset on PLAYER_TARGET_CHANGED -
--- confirmed live via the /bitwcp probe (a FontString fed directly from
--- UnitPower, bypassing RefreshComboPoints entirely) staying stuck across
--- real target switches in combat. A follow-up /run print(UnitPower(...),
--- GetComboPoints("player","target")) test confirmed GetComboPoints reads
--- correctly instead (0 right after switching to a fresh target) and, in
--- that same test, came back as a plain (non-secret) value in combat -
--- contrary to the earlier assumption (see CLAUDE.md) that it was just as
--- secret as UnitPower. So Forever reads combo points from GetComboPoints,
--- Retail keeps UnitPower (shared-across-targets by design since patch
--- 6.0.2, see ThreatPlates' ComboPointsWidget.lua). A plain value needs no
--- secret-safe curve - color is a direct Lua threshold check instead of
--- UnitPowerPercent/ComboPointColorCurve for Forever.
+-- confirmed live via a (since removed) debug probe (a FontString fed
+-- directly from UnitPower, bypassing RefreshComboPoints entirely) staying stuck across
+-- real target switches in combat. GetComboPoints("player", "target") reads
+-- the new target's count correctly, so Forever reads combo points from it;
+-- Retail keeps UnitPower (shared across targets by design since patch
+-- 6.0.2, see ThreatPlates' ComboPointsWidget.lua).
 local function RefreshComboPoints()
   if not Bar or not Bar:IsShown() then return end
   if not Bar.cpText then return end
 
   -- Only the retrieval differs per client - both values are just as secret
-  -- in combat (GetComboPoints confirmed no less secret than UnitPower when
-  -- called from this addon's own tainted execution; an earlier /run-based
-  -- test that saw a plain number was reading from an untainted context, not
-  -- comparable), so the handling below stays identical either way: no Lua
-  -- comparison on cp, only secret-safe C-side sinks (SetText, and the
-  -- existing UnitPowerPercent/ComboPointColorCurve color evaluation, which
-  -- reads UnitPower internally regardless of which value cp holds - a
-  -- Forever color tier can be one frame stale right after a target switch,
-  -- self-corrects on the next point built, no crash risk).
+  -- in combat when read from this addon's own tainted execution (see
+  -- BuildComboPointColorCurve), so the handling below stays identical
+  -- either way: no Lua comparison on cp, only secret-safe C-side sinks
+  -- (SetText, and the UnitPowerPercent/ComboPointColorCurve color
+  -- evaluation, which reads UnitPower internally regardless of which value
+  -- cp holds - OnTargetChanged covers the one moment the two diverge on
+  -- Forever).
   local cp
   if Addon.IS_FOREVER then
     cp = (GetComboPoints and GetComboPoints("player", "target")) or 0
@@ -1813,72 +1805,10 @@ function Addon:ToggleAuraWatch()
   if UnitExists("target") then ScanWatchedAuras("target") end
 end
 
--- Live combo-point probe (slash command /bitwcp, toggles on/off). Diagnoses
--- the "CP doesn't reset on target switch" report: prints a timestamped chat
--- log of every event that could plausibly carry a combo-point update, and
--- mirrors the raw UnitPower(player, 4) value into its own on-screen
--- FontString - separate from Bar.cpText - via SetText, a C-side sink that
--- accepts a secret value directly. tostring()/print() cannot reveal a secret
--- number, which is why the probe's value has to be a FontString, not a chat
--- line. Compare the probe box against the bar's own CP text while switching
--- target: if the probe also stays stuck, the underlying value itself isn't
--- updating (not a display/refresh bug in RefreshComboPoints); if the probe
--- updates but the bar doesn't, the bug is downstream of UnitPower.
-local cpWatchFrame
-local cpWatchValueText
-
-local function CPWatchPrint(msg)
-  print("|cff00ff00[BiTW]|r " .. msg)
-end
-
-local function OnCPWatchEvent(_, event, unit, powerType)
-  if (event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE") and powerType ~= "COMBO_POINTS" then
-    return
-  end
-  local targetName = UnitExists("target") and UnitName("target") or "(no target)"
-  CPWatchPrint(string.format("[%.2f] %s target=%s", GetTime(), event, tostring(targetName)))
-  cpWatchValueText:SetText(UnitPower("player", 4)) -- secret-safe sink, see comment above
-end
-
-function Addon:ToggleComboPointWatch()
-  if not cpWatchFrame then
-    cpWatchFrame = CreateFrame("Frame", nil, UIParent)
-    cpWatchFrame:SetSize(160, 50)
-    cpWatchFrame:SetPoint("TOP", UIParent, "TOP", 0, -150)
-    cpWatchFrame:SetScript("OnEvent", OnCPWatchEvent)
-
-    local bg = cpWatchFrame:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.6)
-
-    local label = cpWatchFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("TOP", cpWatchFrame, "TOP", 0, -4)
-    label:SetText("CP probe")
-
-    cpWatchValueText = cpWatchFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    cpWatchValueText:SetPoint("CENTER", cpWatchFrame, "CENTER", 0, -8)
-    cpWatchValueText:SetText("0")
-  end
-
-  if cpWatchFrame:IsEventRegistered("PLAYER_TARGET_CHANGED") then
-    cpWatchFrame:UnregisterAllEvents()
-    cpWatchFrame:Hide()
-    CPWatchPrint("Combo point watch OFF.")
-    return
-  end
-
-  cpWatchFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-  cpWatchFrame:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
-  cpWatchFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
-  cpWatchFrame:Show()
-  cpWatchValueText:SetText(UnitPower("player", 4))
-  CPWatchPrint("Combo point watch ON. Switch target in combat, watch the probe box vs. the bar's own CP text.")
-end
-
 -- Debug dump for the target-debuff AuraContainer pipeline (slash command
 -- /bitwdebug). Prints exactly the state UpdateDebuffContainerFilters
 -- branches on, so a "no icon" report can be diagnosed without guessing:
--- disabled slot (spellID 0), not in Cat Form, no target selected, or the
+-- unused slot (empty spell ID list), not in Cat Form, no target selected, or the
 -- container/AddAuraGroup itself never having been created — plus the combat/
 -- Config Mode gate and whether each slot's container is enabled. Deliberately
 -- no per-aura "is it on the target" lookup: GetUnitAuraBySpellID returned nil
@@ -1963,10 +1893,11 @@ local function ReportCatForm()
   ReportForms()
 end
 
--- Static section 4: energy + combo points. RefreshComboPoints reads
--- UnitPower("player", 4) only (see CLAUDE.md, WoW Forever "Implemented") -
--- GetComboPoints is printed below purely for reference/curiosity, nothing in
--- the addon depends on it.
+-- Static section 4: energy + combo points. RefreshComboPoints reads the
+-- count from UnitPower("player", 4) on Retail and from
+-- GetComboPoints("player", "target") on Forever (see CLAUDE.md, WoW Forever
+-- "Implemented") - both are printed below. Values that are secret here
+-- show as <secret>.
 local function ReportResources()
   DbgHeader("Energy / combo points")
   local powerType, token = UnitPowerType("player")

@@ -41,7 +41,7 @@ function Addon:SetupOptions()
         name = function()
           return Addon.previewModeActive and "Disable Config Mode" or "Enable Config Mode"
         end,
-        desc = "Shows every icon row (debuffs, player buffs, cooldown buffs, own cooldowns) at its real screen position with real spell art and a dummy countdown (random 1-15s for auras, fixed 60s for own cooldowns), regardless of combat/target/buff state — and force-shows the Bar outside Cat Form too. Real AuraContainers are suppressed while this is on to avoid double icons. Click again to turn it back off when done positioning things. Not saved — always off again after a UI reload/relog.",
+        desc = "Shows every icon row (debuffs, procs, cooldowns) at its real screen position with real spell art and a random 1-15s dummy countdown, regardless of combat/target/buff state — and force-shows the Bar outside Cat Form and combat too. Real AuraContainers are suppressed while this is on to avoid double icons. Click again to turn it back off when done positioning things. Not saved — always off again after a UI reload/relog.",
         type = "execute",
         order = 0,
         width = "full",
@@ -1001,9 +1001,10 @@ function Addon:SetupOptions()
     }
   }
 
-  -- Profiles tab: per-character by default (AceDB-3.0's own behavior), but
-  -- without this nothing lets the user switch to a shared profile, copy one
-  -- from another character, or reset to defaults — this is that UI.
+  -- Profiles tab: every character starts on the shared "Default" profile
+  -- (AceDB:New(..., true) in OnInitialize) and all profiles are available to
+  -- all characters, but without this nothing lets the user create, switch,
+  -- copy, or reset one — this is that UI.
   options.args.profilesTab = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db)
   options.args.profilesTab.order = 7
 
