@@ -229,9 +229,15 @@ Registered in `Addon:OnInitialize()`:
 - File-global variables: UpperCamelCase (`Addon`, `Bar`, `Defaults`).
 - Local variables inside functions: lowerCamelCase.
 - All code and comments: English only.
-- No global (non-`local`) Lua variables except methods on `Addon` and the one
-  required plain global: `BloodInTheWater_OnAddonCompartmentClick` (Blizzard
-  calls Addon Compartment click handlers by name, not through the addon object).
+- No global (non-`local`) Lua variables except methods on `Addon`. The Addon
+  Compartment entry is registered at runtime via
+  `AddonCompartmentFrame:RegisterAddon` (`Addon:RegisterAddonCompartment()`,
+  Druids only) — deliberately **not** via the TOC's `AddonCompartmentFunc`,
+  which would list it for every class. Forever has an Addon Compartment too;
+  confirmed in-game that a Warrior gets no BitW entry and a Druid's entry
+  opens the options.
+- Non-Druids: `OnInitialize` registers only `/bitw` (→ `Addon:PrintDruidOnly()`,
+  a chat notice) and returns; no DB, frames, options or compartment entry.
 - When two code paths do near-identical setup for different widget types
   (e.g. `InitializeAuraButton` for real secure `AuraButton`s vs.
   `CreateIconFrame` for plain preview/Config-Mode frames), a fix to one's

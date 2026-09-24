@@ -274,8 +274,10 @@ local AuraContainerSortDirection = _G.AuraContainerSortDirection
 -------------------------------------------------------------------------------
 
 function Addon:OnInitialize()
-  -- Only active for Druids
+  -- Only active for Druids. /bitw is still registered so non-Druids get an
+  -- explanation instead of an unknown-command reply; nothing else is set up.
   if select(2, UnitClass("player")) ~= "DRUID" then
+    self:RegisterChatCommand("bitw", "PrintDruidOnly")
     return
   end
 
@@ -310,6 +312,9 @@ function Addon:OnInitialize()
 
   -- Register slash command /bitw
   self:RegisterChatCommand("bitw", "OpenConfig")
+  -- Addon Compartment entry, Druids only — hence registered here instead of
+  -- via the TOC's AddonCompartmentFunc, which would list it for every class.
+  self:RegisterAddonCompartment()
   -- Forever-port diagnostics (see CLAUDE.md, "Debugging") — disabled for
   -- release; uncomment to re-enable.
   -- self:RegisterChatCommand("bitwdebug", "DebugCheck")
@@ -1658,19 +1663,33 @@ function Addon:OnMaxPower(event, unit, powerType)
 end
 
 
--- Addon Compartment icon click handler (see .toc's AddonCompartmentFunc).
--- Must be a plain global, not a method — Blizzard calls it directly by
--- name, not through the addon object. Opening the config dialog pops open
--- Blizzard's Settings frame, which is blocked in combat (protected/tainted
--- like most frame-showing UI actions); guard here instead of letting it
--- error, same as every other config-affecting action in this addon already
--- being combat-gated.
-function BloodInTheWater_OnAddonCompartmentClick(addonName, buttonName)
-  if InCombatLockdown() then
-    print("|cff00ff00[BiTW]|r Can't open options while in combat.")
+-- /bitw handler for non-Druids (see OnInitialize) — the addon does nothing
+-- for other classes, so say so instead of silently ignoring the command.
+function Addon:PrintDruidOnly()
+  print("|cff00ff00[BiTW]|r Blood in the Water only works for Druids.")
+end
+
+-- Adds the Addon Compartment entry (Druids only, called from OnInitialize).
+-- Opening the config dialog pops open Blizzard's Settings frame, which is
+-- blocked in combat (protected/tainted like most frame-showing UI actions);
+-- guard here instead of letting it error, same as every other
+-- config-affecting action in this addon already being combat-gated.
+function Addon:RegisterAddonCompartment()
+  if not (AddonCompartmentFrame and AddonCompartmentFrame.RegisterAddon) then
     return
   end
-  Addon:OpenConfig()
+  AddonCompartmentFrame:RegisterAddon({
+    text = "Blood in the Water",
+    icon = "Interface\\AddOns\\BloodInTheWater\\Media\\bitw_logo.png",
+    notCheckable = true,
+    func = function()
+      if InCombatLockdown() then
+        print("|cff00ff00[BiTW]|r Can't open options while in combat.")
+        return
+      end
+      Addon:OpenConfig()
+    end,
+  })
 end
 
 -- Shared helpers for the debug commands below (/bitwdebug, /bitwauras).
