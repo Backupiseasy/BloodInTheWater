@@ -21,9 +21,10 @@ local Defaults = {
     barColor         = {0.949, 1, 0.043, 1}, -- energy bar fill color + alpha
     barFontSize      = 18,              -- energy value number font size (points)
     barBorderTexture = "PlainBorder",
-    barBorderSize    = 16,               -- edge thickness (px)
+    barBorderSize    = 2,                -- edge thickness (px)
     barBorderInset   = 0,                -- offset of the edge from the bar's own outer edge (px)
     barBorderColor   = {0, 0, 0, 0.3},      -- border color + alpha
+    barBackgroundColor = {0, 0, 0, 0.3},    -- background panel behind the fill, visible through the border
     -- Combo point counter text (anchored relative to the energy bar center).
     cpPosX     = 0,   -- X offset from Bar center (px)
     cpPosY     = 78,  -- Y offset from Bar center (px)
@@ -77,10 +78,35 @@ local Defaults = {
     -- hardcoded — see COOLDOWN_BUFF_SPELL_IDS). Stays one positioned unit
     -- with a Spacing value (stacked vertically), unlike Debuffs/Buffs above
     -- which are individually positioned per slot.
-    cooldownBuffPosX    = -280, -- X offset from Bar center (px)
-    cooldownBuffPosY    = 70,  -- Y offset below Bar bottom (px)
+    cooldownBuffPosX    = -478, -- X offset from Bar center (px)
+    cooldownBuffPosY    = 170,  -- Y offset below Bar bottom (px)
     cooldownBuffSpacing = 4,   -- vertical spacing between stacked icons (px)
     cooldownBuffNormalColor = {1, 1, 1, 1}, -- countdown text color
+    cooldownBuffBarWidth  = 132, -- StatusBar width next to each icon (px)
+    cooldownBuffBarHeight = 30,
+    cooldownBuffIconGap     = 6,     -- X offset between icon and bar (px)
+    cooldownBuffIconOnRight = false, -- icon on the right of the bar instead of the left
+    cooldownBuffShowIcon    = true,  -- shows the icon (art + cooldown swipe + countdown number) — independent of cooldownBuffShowBar
+    cooldownBuffShowBar     = true,  -- shows the fill bar (+ its border and name label) — independent of cooldownBuffShowIcon
+    cooldownBuffBarTexture  = "Smooth", -- fill texture (LibSharedMedia "statusbar" key), independent of the energy bar's own
+    -- Border around the fill bar, same option shape as the Energy Bar's own
+    -- (barBorder*) — defaults copied from it, independently configurable
+    -- afterward.
+    cooldownBuffBarBorderTexture = "PlainBorder",
+    cooldownBuffBarBorderSize    = 2,
+    cooldownBuffBarBorderInset   = 0,
+    cooldownBuffBarBorderColor   = {0, 0, 0, 0.3},
+    cooldownBuffBarBackgroundColor = {0, 0, 0, 0.3}, -- each fill bar's background panel, behind the fill
+    -- Per-slot bar fill color, index matches COOLDOWN_BUFF_SPELL_IDS. WoW
+    -- addons cannot sample a texture's actual pixel data (no such API
+    -- exists) — these are hand-picked to approximate each spell icon's most
+    -- striking color rather than derived at runtime; override any of them
+    -- in Options if they're off.
+    cooldownBuffBarColors = {
+      {0.98, 0.75, 0.19, 1}, -- Tiger's Fury: icon's gold/yellow fur (FBC030)
+      {0.68, 0.25, 0.03, 1}, -- Berserk: icon's darker orange-brown (AD4108)
+      {0.65, 0.20, 0.85, 1}, -- Incarnation: purple cat-avatar glow
+    },
   }
 }
 
@@ -172,14 +198,16 @@ local COOLDOWN_BUFF_SPELL_IDS = Spells.cooldowns
 local NUM_COOLDOWN_BUFF_SLOTS = #COOLDOWN_BUFF_SPELL_IDS
 local CP_BUFFER_SPELL_ID = Spells.cpBuffer -- nil when this client has no overflow buffer
 
--- Precomputed includeSpellIDs sets (AuraContainer candidate filters), one per
--- slot, plus a single merged set for the cooldown-buff column.
-local DEBUFF_SPELL_SETS, PLAYER_BUFF_SPELL_SETS, COOLDOWN_BUFF_SPELL_SET = {}, {}, {}
+-- Precomputed includeSpellIDs sets (AuraContainer candidate filters), one
+-- array per row, all sharing the list-of-lists shape SPELL_SETS uses —
+-- cooldowns gets its own per-slot array (not a single merged set) because,
+-- unlike the old shared-pool cooldown-buff container, each slot is now its
+-- own fixed single-purpose AuraContainer (see CreateCooldownBuffContainers)
+-- and needs its own candidate filter.
+local DEBUFF_SPELL_SETS, PLAYER_BUFF_SPELL_SETS, COOLDOWN_BUFF_SPELL_SETS = {}, {}, {}
 for i = 1, NUM_DEBUFF_SLOTS do DEBUFF_SPELL_SETS[i] = ToSpellSet(DEBUFF_SPELL_IDS[i] or {}) end
 for i = 1, NUM_PLAYER_BUFF_SLOTS do PLAYER_BUFF_SPELL_SETS[i] = ToSpellSet(PLAYER_BUFF_SPELL_IDS[i] or {}) end
-for _, ids in ipairs(COOLDOWN_BUFF_SPELL_IDS) do
-  for _, spellID in ipairs(ids) do COOLDOWN_BUFF_SPELL_SET[spellID] = true end
-end
+for i = 1, NUM_COOLDOWN_BUFF_SLOTS do COOLDOWN_BUFF_SPELL_SETS[i] = ToSpellSet(COOLDOWN_BUFF_SPELL_IDS[i] or {}) end
 
 -- Lets Options.lua (separate chunk) hide rows whose spell doesn't exist on
 -- this client. row = "debuff" | "buff" | "cooldown".
@@ -206,6 +234,46 @@ local function SpellIdsText(ids)
   return table.concat(ids, ",")
 end
 
+-- Fixed 2px-per-side outset of a cooldown-buff bar's border frame beyond the
+-- StatusBar it wraps (same "+4 total" convention ApplyBarAppearance's Bar.bg
+-- uses for the energy bar) — a named constant since both the border's own
+-- anchor offsets and the default cooldownBuffBarHeight/row-stacking-step math
+-- need to agree on the same number.
+local COOLDOWN_BUFF_BAR_BORDER_OUTSET = 2
+
+-- Cooldown-buff bar name label text. Some talent spells' full name is
+-- formatted "<short name>: <subtitle>" (e.g. Incarnation's is "Incarnation:
+-- Avatar of Ashamane"/localized equivalent) — far too long for a narrow bar.
+-- Cuts at the first colon instead of hardcoding a locale-specific override
+-- string, so it stays correct under any client language; falls back to the
+-- full name unchanged for spells with no colon (Tiger's Fury, Berserk).
+local function ShortSpellName(spellID)
+  local name = C_Spell.GetSpellName(spellID)
+  if not name then return "" end
+  return name:match("^(.-)%s*:") or name
+end
+
+-- Returns whichever of slot i's tracked spellIDs the player currently has.
+-- COOLDOWN_BUFF_SPELL_IDS[i] is itself a list (see SPELL_SETS above), the
+-- same shape the Moonfire dual-ID debuff slot already uses — lets a slot
+-- cover more than one possible spell (e.g. a talent that swaps one spell
+-- for another). Every cooldown-buff slot currently has exactly one entry,
+-- so this always just returns ids[1]; the lookup only matters once a slot
+-- genuinely has alternatives. C_SpellBook.IsSpellKnown is plain spellbook/
+-- talent data, not aura/cooldown data — not subject to the secret-aura/
+-- cooldown restrictions elsewhere in this file, safe to call anytime
+-- including combat. Used only for the bar's name label; the AuraContainer
+-- itself matches any ID in the slot via COOLDOWN_BUFF_SPELL_SETS[i]
+-- regardless of which this picks.
+local function GetActiveCooldownBuffSpellID(i)
+  local ids = COOLDOWN_BUFF_SPELL_IDS[i] or {}
+  for _, spellID in ipairs(ids) do
+    if C_SpellBook.IsSpellKnown(spellID) then
+      return spellID
+    end
+  end
+  return ids[1]
+end
 -- GetShapeshiftFormID() value for Cat Form. Spec-independent and stable
 -- across stance-bar reordering, unlike the positional GetShapeshiftForm()
 -- index (which shifts if not all forms are unlocked/visible).
@@ -268,6 +336,100 @@ end
 local HasAuraContainers = C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo("CustomAuraContainerTemplate") and true or false
 local AuraContainerSortMethod = _G.AuraContainerSortMethod
 local AuraContainerSortDirection = _G.AuraContainerSortDirection
+
+-- Sizes/positions one cooldown-buff AuraButton's bar (and its border) relative
+-- to the button itself (which doubles as the icon). Shared by
+-- AttachCooldownBuffBar and ReapplyLiveAuraButtonSettings (both further down)
+-- so the two can't drift out of sync — declared up here so both can see it
+-- regardless of their own position in the file.
+--
+-- The border frame gets an explicit SetSize plus a single anchor point
+-- instead of the two-opposite-corner anchoring (TOPLEFT+BOTTOMRIGHT, both
+-- relative to bar) it had at first — confirmed in-game that pinning both
+-- corners to bar made its *width* a secret value ("attempt to perform
+-- arithmetic on local 'width' (a secret number value...)" inside
+-- Blizzard_SharedXML/Backdrop.lua, thrown from SetBackdrop). bar carries
+-- AddSecretAspect(BarValue) from SetDurationBar; deriving another frame's
+-- size from its two corners apparently taints that derived size too, even
+-- though only the *value* aspect was marked secret, not geometry. An
+-- explicit SetSize with a plain number (computed by us, never read back off
+-- bar) sidesteps that entirely — only bar's own position (not its size) is
+-- still referenced, which Backdrop.lua's width/height math never touches.
+local function LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, inset)
+  local bar = auraButton.Bar
+  if not bar then return end
+  bar:SetSize(barWidth, barHeight)
+  bar:ClearAllPoints()
+  if iconOnRight then
+    bar:SetPoint("RIGHT", auraButton, "LEFT", -gap, 0)
+  else
+    bar:SetPoint("LEFT", auraButton, "RIGHT", gap, 0)
+  end
+
+  local barBorder = auraButton.BarBorder
+  if barBorder then
+    -- Blizzard's own backdrop insets (passed to SetBackdrop by
+    -- ApplyCooldownBuffBarBorder) only reposition the backdrop's "Center"
+    -- bg region, and only when a bgFile is set (Blizzard_SharedXML/
+    -- Backdrop.lua's ApplyBackdrop) — confirmed by reading that function
+    -- directly. We never set bgFile (a separate addon-owned texture is
+    -- used instead), so the inset option did nothing at all; implemented
+    -- here instead by actually resizing this frame around bar.
+    local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (inset or 0)
+    barBorder:SetSize(barWidth + 2 * outset, barHeight + 2 * outset)
+    barBorder:ClearAllPoints()
+    barBorder:SetPoint("TOPLEFT", bar, "TOPLEFT", -outset, outset)
+  end
+end
+
+-- Shows/hides one cooldown-buff AuraButton's icon half (art + cooldown swipe
+-- + countdown number, all created by InitializeAuraButton) and bar half
+-- (+ its border and name label, created by AttachCooldownBuffBar) independently.
+-- auraButton itself is never hidden — it's the AuraContainer's secure pooled
+-- frame and still has to report its size for the row's layout even with both
+-- halves hidden; only its own child visuals toggle. Shared by
+-- AttachCooldownBuffBar (creation) and ReapplyLiveAuraButtonSettings (live,
+-- out of combat) — plain SetShown calls, same safety class as the other
+-- live Set* calls there.
+local function ApplyCooldownBuffIconBarVisibility(auraButton, db)
+  local showIcon = db.cooldownBuffShowIcon ~= false
+  if auraButton.Icon then auraButton.Icon:SetShown(showIcon) end
+  if auraButton.Cooldown then auraButton.Cooldown:SetShown(showIcon) end
+
+  local showBar = db.cooldownBuffShowBar ~= false
+  if auraButton.Bar then auraButton.Bar:SetShown(showBar) end
+  if auraButton.BarBorder then auraButton.BarBorder:SetShown(showBar) end
+end
+
+-- Builds/rebuilds the border backdrop on one cooldown-buff bar's border
+-- frame (real AuraButton's or the Config Mode preview's — frame-agnostic).
+-- Same "SetBackdrop(nil) then rebuild fresh, reapply border color once more
+-- next frame" dance ApplyBarAppearance uses for the energy bar —
+-- BackdropTemplateMixin doesn't reliably recompute edgeSize/insets/color in
+-- place, and the color can settle back to full alpha a frame late.
+local function ApplyCooldownBuffBarBorder(barBorder, db)
+  if not barBorder or not barBorder.SetBackdrop then return end
+
+  barBorder:SetBackdrop(nil)
+  -- No insets field here — see ApplyBarAppearance's comment (Blizzard's
+  -- backdrop insets only move the "Center" bg region, and only with a
+  -- bgFile, which this never sets). Border Position (Inset) is instead
+  -- implemented via barBorder's own size/anchor (see LayoutCooldownBuffBar
+  -- and the two call sites that create/reposition the Config Mode preview's
+  -- equivalent frame).
+  local borderPath = (LSM and LSM:Fetch("border", db.cooldownBuffBarBorderTexture, true)) or FALLBACK_BORDER_PATH
+  barBorder:SetBackdrop({
+    edgeFile = borderPath,
+    edgeSize = db.cooldownBuffBarBorderSize,
+  })
+  local c = db.cooldownBuffBarBorderColor
+  barBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+  C_Timer.After(0, function()
+    if barBorder and barBorder.SetBackdropBorderColor then
+      barBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+    end
+  end)
+end
 
 -------------------------------------------------------------------------------
 -- Lifecycle
@@ -367,8 +529,9 @@ function Addon:OnEnable()
   self:RegisterEvent("UNIT_MAXPOWER", "OnMaxPower")
   -- AceEvent-3.0 has no RegisterUnitEvent (that's a raw Frame method); the
   -- handler itself filters for unit == "player" below. Only drives the
-  -- combo-point overflow buffer now — target/player aura display is fully
-  -- event-driven by AuraContainer itself, no UNIT_AURA polling needed.
+  -- combo-point overflow buffer now — every icon row's display, including
+  -- the cooldown-buff bars, is fully event-driven by AuraContainer itself,
+  -- no polling needed there.
   self:RegisterEvent("UNIT_AURA", "OnUnitAura")
   self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
   -- AuraContainers cannot be created during combat; retries container
@@ -403,8 +566,10 @@ function Addon:OnDisable()
         container:SetEnabled(false)
       end
     end
-    if Bar.cooldownBuffContainer then
-      Bar.cooldownBuffContainer:SetEnabled(false)
+    if Bar.cooldownBuffContainers then
+      for _, container in ipairs(Bar.cooldownBuffContainers) do
+        container:SetEnabled(false)
+      end
     end
   end
 end
@@ -416,16 +581,34 @@ end
 function Addon:CreateEnergyBar()
   local db = self.db.profile
 
-  -- Background frame (also carries the decorative border — see
-  -- ApplyBarAppearance). BackdropTemplate mixin needed for SetBackdrop.
-  local bg = CreateFrame("Frame", "BiTWEnergyBarBG", UIParent, "BackdropTemplate")
+  -- Background panel — always exactly Bar's own size (same convention the
+  -- cooldown-buff bars' BarBg already uses via SetAllPoints(bar)), never
+  -- affected by Border Position (Inset). Carries only the background
+  -- color texture; the border lives on its own separate frame (bg.border
+  -- below) so that moving the border can't also resize/distort this panel
+  -- — confirmed in-game that sharing one frame for both made the Bar
+  -- Background Color panel grow/shrink along with the border instead of
+  -- staying put.
+  local bg = CreateFrame("Frame", "BiTWEnergyBarBG", UIParent)
   bg:SetFrameStrata("BACKGROUND")
-  bg:SetSize(db.width + 4, db.height + 4)
+  bg:SetSize(db.width, db.height)
   bg:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
 
   local bgTex = bg:CreateTexture(nil, "BACKGROUND")
   bgTex:SetAllPoints(bg)
-  bgTex:SetColorTexture(0, 0, 0, 0.75)
+  bg.bgTex = bgTex
+
+  -- Decorative border — separate frame from bg above, sized independently
+  -- so Border Position (Inset) can move it without touching the
+  -- background panel. Parented to bg (not a UIParent sibling) so Show/Hide
+  -- on bg cascades to it automatically. BackdropTemplate mixin needed for
+  -- SetBackdrop.
+  local border = CreateFrame("Frame", "BiTWEnergyBarBorder", bg, "BackdropTemplate")
+  border:SetFrameStrata("BACKGROUND")
+  local pad = 2 - (db.barBorderInset or 0)
+  border:SetSize(math.max(1, db.width + 2 * pad), math.max(1, db.height + 2 * pad))
+  border:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+  bg.border = border
 
   -- Energy status bar
   Bar = CreateFrame("StatusBar", "BiTWEnergyBar", UIParent)
@@ -479,12 +662,12 @@ function Addon:CreateEnergyBar()
   -- the client. The AuraContainers above are entirely addon-owned frames,
   -- fed via public, non-protected APIs instead.
   self:CreateBuffAuraContainers()
-  self:CreateCooldownBuffAuraContainer()
+  self:CreateCooldownBuffContainers()
   self:CreatePreviewFrames()
 
   self:RepositionDebuffContainers()
   self:RepositionBuffContainers()
-  self:RepositionCooldownBuffContainer()
+  self:RepositionCooldownBuffContainers()
   self:RepositionPreviewFrames()
   self:UpdatePreviewFrames()
 
@@ -661,7 +844,13 @@ function Addon:ReapplyLiveAuraButtonSettings()
   local fontPath = GetAppearanceFontPath(db.appearanceFont)
   local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
 
-  local function ReapplyContainer(container, textColor, stacksX, stacksY)
+  local barWidth, barHeight = db.cooldownBuffBarWidth, db.cooldownBuffBarHeight
+  local gap, iconOnRight = db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight
+  local barTexturePath = LSM and LSM:Fetch("statusbar", db.cooldownBuffBarTexture, true)
+  -- Always eased, never instant-jump — no user-facing toggle for this.
+  local barInterpolation = Enum.StatusBarInterpolation.ExponentialEaseOut
+
+  local function ReapplyContainer(container, textColor, stacksX, stacksY, barColor, labelSpellID)
     for i = 1, container:GetAuraGroupFrameCount("main") do
       local auraButton = container:GetAuraGroupFrame("main", i)
       if auraButton then
@@ -695,6 +884,58 @@ function Addon:ReapplyLiveAuraButtonSettings()
             auraButton.PandemicGlow:SetSize(iconSize * 1.7, iconSize * 1.7)
           end
         end
+        -- Cooldown-buff bar (nil for Debuffs/Buffs buttons, which never get
+        -- one — see AttachCooldownBuffBar).
+        if auraButton.Bar then
+          LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
+          auraButton.Bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
+          if barColor then
+            auraButton.Bar:SetStatusBarColor(barColor[1], barColor[2], barColor[3], barColor[4] or 1)
+          end
+          if auraButton.BarBg then
+            local bgc = db.cooldownBuffBarBackgroundColor
+            auraButton.BarBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+          end
+          if auraButton.BarBorder then
+            -- Color only here, never a full SetBackdrop rebuild — confirmed
+            -- in-game that rebuilding the backdrop (ApplyCooldownBuffBarBorder)
+            -- from inside this same loop, right after the PixelUtil.SetSize
+            -- call above on the real secure auraButton, throws "attempt to
+            -- perform arithmetic on local 'width' (a secret number value,
+            -- while execution tainted by 'BloodInTheWater')" from Blizzard's
+            -- own Backdrop.lua — the execution stays tainted from touching
+            -- the secure AuraButton moments earlier, and Blizzard's backdrop
+            -- code defensively treats any frame geometry read from tainted
+            -- execution as secret, regardless of whose frame it is. Same
+            -- "color-only live, full rebuild only at creation" limitation
+            -- PandemicGlow's "custom" style already has above — Border
+            -- Texture/Size/Inset changes need a /reload to reach
+            -- already-pooled buttons; only Border Color applies live.
+            local c = db.cooldownBuffBarBorderColor
+            if c then
+              auraButton.BarBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+            end
+          end
+          if auraButton.BarName then
+            auraButton.BarName:SetFont(fontPath, fontSize, "")
+            -- Catches a talent swap (Berserk <-> Incarnation) that happened
+            -- while out of combat — the label is plain addon-owned text,
+            -- only ever set here and at creation, never auto-updated by
+            -- Blizzard like the icon is.
+            if labelSpellID then
+              auraButton.BarName:SetText(ShortSpellName(labelSpellID))
+            end
+          end
+          -- Re-packs the bar + options (interpolation/direction) — safe to
+          -- call again live, same as the original SetDurationBar at
+          -- creation (AttachCooldownBuffBar); it just re-triggers
+          -- UpdateAuraDisplay internally.
+          auraButton:SetDurationBar(auraButton.Bar, {
+            interpolation = barInterpolation,
+            direction = Enum.StatusBarTimerDirection.RemainingTime,
+          })
+          ApplyCooldownBuffIconBarVisibility(auraButton, db)
+        end
       end
     end
   end
@@ -709,8 +950,10 @@ function Addon:ReapplyLiveAuraButtonSettings()
       ReapplyContainer(container, db.buffNormalColor, db.buffStacksPosX, db.buffStacksPosY)
     end
   end
-  if Bar.cooldownBuffContainer then
-    ReapplyContainer(Bar.cooldownBuffContainer, db.cooldownBuffNormalColor)
+  if Bar.cooldownBuffContainers then
+    for i, container in ipairs(Bar.cooldownBuffContainers) do
+      ReapplyContainer(container, db.cooldownBuffNormalColor, nil, nil, db.cooldownBuffBarColors[i], GetActiveCooldownBuffSpellID(i))
+    end
   end
 end
 
@@ -750,11 +993,11 @@ function Addon:ReapplyLiveIconFrameFonts()
       ApplyFont(frame, db.buffNormalColor)
     end
   end
-  if Bar.previewCooldownBuff then
-    for _, frame in ipairs(Bar.previewCooldownBuff) do
-      ApplyFont(frame, db.cooldownBuffNormalColor)
-    end
-  end
+  -- previewCooldownBuff uses CreatePreviewCooldownBuffFrame now (icon+bar
+  -- combo, not a plain CreateIconFrame) — ReapplyPreviewCooldownBuffBarSettings
+  -- covers its font/color/size/texture/border live instead. The real
+  -- cooldown-buff row is real AuraButtons now too, covered by
+  -- ReapplyLiveAuraButtonSettings above like Debuffs/Buffs.
 end
 
 -------------------------------------------------------------------------------
@@ -788,8 +1031,8 @@ function Addon:CreateDebuffAuraContainers()
     -- Required even for a single-icon group — without an explicit flow
     -- layout anchor/growth direction, the container never lays out (and
     -- thus never shows) its AuraButton at all. Same "LEFT" + Right/Down
-    -- values as the player-buff/cooldown-buff containers below, which are
-    -- confirmed working live.
+    -- values as the player-buff container below, which is confirmed
+    -- working live.
     container:SetFlowLayoutAnchorPoint("LEFT")
     container:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection.Right, AnchorUtil.FlowDirection.Down)
     container:SetEnabled(false)
@@ -926,86 +1169,318 @@ function Addon:RepositionBuffContainers()
 end
 
 -------------------------------------------------------------------------------
--- Cooldown-buff row (AuraContainer, unit = player, sorted by remaining time)
+-- Cooldown-buff row (AuraContainer, unit = player — one single-spell
+-- container per tracked spell, each AuraButton also wired to a real bar)
 -------------------------------------------------------------------------------
 
--- Separate from the general player-buff container above: Tiger's Fury/
--- Berserk/Incarnation by default, sorted by AuraContainerSortMethod.
--- Expiration (soonest-expiring first) instead of default/insertion order —
--- the sort criterion is why this needs its own container rather than just
--- more slots on the existing one (a single AddAuraGroup only has one sort
--- method for everything in it).
--- Vertically stacked (anchor "TOP", growth Down) instead of a horizontal
--- row: MaximumLineSize is pinned to exactly one icon's width in
--- UpdateCooldownBuffContainerFilters below, so the flow layout wraps to a
--- new line after every single icon — the standard trick for forcing a
--- single-column layout out of a row/wrap-based flow layout, since
--- SetFlowLayoutGrowthDirection's primary axis is always horizontal.
-function Addon:CreateCooldownBuffAuraContainer()
-  if not HasAuraContainers then return end
-  if InCombatLockdown() then return end
-  if Bar.cooldownBuffContainer then return end
+-- AuraButton:SetDurationBar(statusBar, options) is the secret-safe StatusBar
+-- bridge this row needed from the start — confirmed by reading
+-- Blizzard_CustomAuraButton.lua directly (Patch 12.1.0+; not surfaced by the
+-- local WoW-API lookup tool, not used anywhere in Blizzard's own UI as of
+-- that source check, and not turned up by web search while first planning
+-- this row). Internally (ApplyDurationBar in that same file) it calls
+-- statusBar:AddSecretAspect(Enum.SecretAspect.BarValue) once, then keeps
+-- calling statusBar:SetTimerDuration(auraDuration, interpolation,
+-- options.direction) from Blizzard's own secure code on every aura update —
+-- the addon never reads a duration value itself, so this works in combat
+-- exactly like SetDurationCooldown already does for the ring.
+--
+-- This supersedes two earlier, broken attempts: polling C_UnitAuras directly
+-- for the duration (silently returns nothing, or hard-errors "Auras cannot
+-- be accessed when secret while tainted", depending which API — confirmed
+-- in-game; papering over the error with pcall was rejected, it only trades
+-- a loud failure for a silent one) and tracking C_Spell cooldown duration
+-- instead of the aura (safe in combat, but the wrong metric — time until
+-- the spell is off cooldown, not time the buff lasts).
+--
+-- Each tracked spell gets its own single-purpose container (maxFrameCount
+-- 1, locked to one spellID via candidateFilters.includeSpellIDs), exactly
+-- like CreateDebuffAuraContainers/CreateBuffAuraContainers — not the one
+-- shared pool sorted by Expiration the original pre-bar version used. A
+-- fixed bar color per slot (cooldownBuffBarColors) needs a stable button
+-- identity, which a shared dynamically-reassigned pool can't give.
 
-  local db = self.db.profile
-  local container = CreateFrame("AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
-  container:AddAuraGroup("main", "HELPFUL", {
-    initializeFrame = function(auraButton)
-      InitializeAuraButton(auraButton, db.cooldownBuffNormalColor)
-    end,
-    sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Expiration,
-    sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal,
+-- LayoutCooldownBuffBar/ApplyCooldownBuffBarBorder are declared up near the
+-- top of the file instead of here — ReapplyLiveAuraButtonSettings, further
+-- up still, needs to see them too.
+
+-- Adds the StatusBar (+ trough background, border, name label) to one
+-- cooldown-buff AuraButton and wires it via SetDurationBar. Called once from
+-- CreateCooldownBuffContainers' initializeFrame, inside Blizzard's own
+-- securecallfunction wrapper — same as every other Set* call in
+-- InitializeAuraButton.
+local function AttachCooldownBuffBar(auraButton, spellID, barColor)
+  local db = Addon.db.profile
+  local iconSize = db.appearanceIconSize
+  local barWidth, barHeight = db.cooldownBuffBarWidth, db.cooldownBuffBarHeight
+  local gap, iconOnRight = db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight
+
+  local bar = CreateFrame("StatusBar", nil, auraButton)
+  local barTexturePath = LSM and LSM:Fetch("statusbar", db.cooldownBuffBarTexture, true)
+  bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
+  if barColor then
+    bar:SetStatusBarColor(barColor[1], barColor[2], barColor[3], barColor[4] or 1)
+  end
+  auraButton.Bar = bar
+
+  local barBg = bar:CreateTexture(nil, "BACKGROUND")
+  barBg:SetAllPoints(bar)
+  local bgc = db.cooldownBuffBarBackgroundColor
+  barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+  auraButton.BarBg = barBg
+
+  -- Independent frame, not a child texture of bar — sized/anchored by
+  -- LayoutCooldownBuffBar below (explicit SetSize, not two-corner anchoring
+  -- to bar — see that function's comment for why).
+  local barBorder = CreateFrame("Frame", nil, auraButton, "BackdropTemplate")
+  auraButton.BarBorder = barBorder
+  ApplyCooldownBuffBarBorder(barBorder, db)
+
+  -- Spell name label — the spellID is fixed for this container's whole
+  -- lifetime (one container per spell), so this is set once here, never
+  -- re-read per update like the old polling version had to.
+  local nameFS = bar:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+  nameFS:SetPoint("LEFT", bar, "LEFT", 3, 0)
+  nameFS:SetJustifyH("LEFT")
+  local fontPath = GetAppearanceFontPath(db.appearanceFont)
+  local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
+  nameFS:SetFont(fontPath, fontSize, "")
+  nameFS:SetText(ShortSpellName(spellID))
+  auraButton.BarName = nameFS
+
+  LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
+  ApplyCooldownBuffIconBarVisibility(auraButton, db)
+
+  -- Always eased, never instant-jump — no user-facing toggle for this.
+  auraButton:SetDurationBar(bar, {
+    interpolation = Enum.StatusBarInterpolation.ExponentialEaseOut,
+    direction = Enum.StatusBarTimerDirection.RemainingTime,
   })
-  container:SetFlowLayoutAnchorPoint("TOP")
-  container:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection.Right, AnchorUtil.FlowDirection.Down)
-  container:SetEnabled(false)
-  Bar.cooldownBuffContainer = container
 end
 
--- Pushes today's COOLDOWN_BUFF_SPELL_IDS / Cat Form + combat state into the container.
--- Safe to call live (same reasoning as UpdateBuffContainerFilters).
-function Addon:UpdateCooldownBuffContainerFilters()
-  if not HasAuraContainers or not Bar.cooldownBuffContainer then return end
+-- Creates the fixed single-spell containers, one per COOLDOWN_BUFF_SPELL_IDS
+-- slot (2 on both Retail and Forever, see SPELL_SETS). AuraContainers cannot
+-- be created during combat — guarded here and retried from OnCombatEnded,
+-- same as CreateDebuffAuraContainers/CreateBuffAuraContainers.
+function Addon:CreateCooldownBuffContainers()
+  if not HasAuraContainers then return end
+  if InCombatLockdown() then return end
+  if Bar.cooldownBuffContainers and #Bar.cooldownBuffContainers > 0 then return end
 
   local db = self.db.profile
-  local container = Bar.cooldownBuffContainer
-  -- Config Mode owns this screen space instead — see UpdateDebuffContainerFilters.
-  if Addon.previewModeActive then
+  Bar.cooldownBuffContainers = {}
+  for i = 1, NUM_COOLDOWN_BUFF_SLOTS do
+    local barColor = db.cooldownBuffBarColors[i]
+    local container = CreateFrame("AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
+    container:AddAuraGroup("main", "HELPFUL", {
+      initializeFrame = function(auraButton)
+        InitializeAuraButton(auraButton, db.cooldownBuffNormalColor)
+        AttachCooldownBuffBar(auraButton, GetActiveCooldownBuffSpellID(i), barColor)
+      end,
+      sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Default,
+      sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal,
+    })
+    container:SetFlowLayoutAnchorPoint("LEFT")
+    container:SetFlowLayoutGrowthDirection(AnchorUtil.FlowDirection.Right, AnchorUtil.FlowDirection.Down)
     container:SetEnabled(false)
+    Bar.cooldownBuffContainers[i] = container
+  end
+end
+
+-- Pushes today's COOLDOWN_BUFF_SPELL_IDS / Cat Form + combat state into each
+-- slot container. Safe to call live (same reasoning as
+-- UpdateBuffContainerFilters) — only frame *creation* above is combat-gated.
+function Addon:UpdateCooldownBuffContainerFilters()
+  if not HasAuraContainers or not Bar.cooldownBuffContainers then return end
+
+  local db = self.db.profile
+  if Addon.previewModeActive then
+    for _, container in ipairs(Bar.cooldownBuffContainers) do
+      container:SetEnabled(false)
+    end
     return
   end
 
   local showRow = ShouldShowInCombat()
-  if not showRow then
-    container:SetEnabled(false)
-    return
+  for i = 1, NUM_COOLDOWN_BUFF_SLOTS do
+    local container = Bar.cooldownBuffContainers[i]
+    local ids = COOLDOWN_BUFF_SPELL_IDS[i]
+    if container then
+      if showRow and ids and #ids > 0 then
+        container:SetUnit("player")
+        container:SetAuraGroupFilterString("main", "HELPFUL|PLAYER")
+        container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = COOLDOWN_BUFF_SPELL_SETS[i] })
+        container:SetAuraGroupMaxFrameCount("main", 1)
+        container:SetAuraGroupLayout("main", { elementWidth = db.appearanceIconSize, elementHeight = db.appearanceIconSize })
+        container:SetFlowLayoutMaximumLineSize(db.appearanceIconSize)
+        container:SetEnabled(true)
+      else
+        container:SetEnabled(false)
+      end
+    end
   end
-
-  if next(COOLDOWN_BUFF_SPELL_SET) == nil then
-    container:SetEnabled(false)
-    return
-  end
-
-  container:SetUnit("player")
-  container:SetAuraGroupFilterString("main", "HELPFUL|PLAYER")
-  container:SetAuraGroupCandidateFilters("main", { includeSpellIDs = COOLDOWN_BUFF_SPELL_SET })
-  container:SetAuraGroupMaxFrameCount("main", NUM_COOLDOWN_BUFF_SLOTS)
-  container:SetAuraGroupLayout("main", {
-    elementWidth = db.appearanceIconSize,
-    elementHeight = db.appearanceIconSize,
-    elementSpacing = db.cooldownBuffSpacing, -- unused (only 1 per line) but harmless
-    lineSpacing = db.cooldownBuffSpacing,    -- vertical gap between stacked icons
-  })
-  -- No room for a 2nd icon on the same "line" — forces one icon per line.
-  container:SetFlowLayoutMaximumLineSize(db.appearanceIconSize)
-  container:SetEnabled(true)
 end
 
-function Addon:RepositionCooldownBuffContainer()
-  if not Bar or not Bar.cooldownBuffContainer then return end
+-- Vertical stack, top-down — each container independently positioned (not
+-- a per-slot offset array like debuffOffsets/buffOffsets) since this row has
+-- always used a single base position + computed spacing. Step size derived
+-- from the taller of icon/bar height (plus the border's outset) since each
+-- slot is an icon+bar combo, not just an icon.
+function Addon:RepositionCooldownBuffContainers()
+  if not Bar or not Bar.cooldownBuffContainers then return end
 
   local db = self.db.profile
-  Bar.cooldownBuffContainer:ClearAllPoints()
-  Bar.cooldownBuffContainer:SetPoint("TOP", Bar, "BOTTOM", db.cooldownBuffPosX or 0, db.cooldownBuffPosY or -80)
+  local borderOutset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0))
+  local rowHeight = math.max(db.appearanceIconSize, db.cooldownBuffBarHeight + 2 * borderOutset)
+  local step = rowHeight + (db.cooldownBuffSpacing or 4)
+  for i, container in ipairs(Bar.cooldownBuffContainers) do
+    container:ClearAllPoints()
+    container:SetPoint("TOP", Bar, "BOTTOM", db.cooldownBuffPosX or 0, (db.cooldownBuffPosY or -80) - (i - 1) * step)
+  end
+end
+
+-------------------------------------------------------------------------------
+-- Cooldown-buff row — Config Mode preview (plain frames, NOT AuraContainer)
+-------------------------------------------------------------------------------
+
+-- Plain icon+bar combo frame, entirely separate from the real AuraContainers
+-- above — same reasoning as CreateIconFrame: AuraContainer/AuraButton has no
+-- demo/preview mechanism, so faking it means a plain Frame+Texture+Cooldown+
+-- StatusBar stand-in instead. Unlike the real row, sizing/positioning is
+-- self-contained in one wrapper frame (frame.icon/.bar), since there's no
+-- AuraButton to double as the icon.
+local function LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight, inset)
+  local outset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (inset or 0))
+  frame:SetSize(iconSize + gap + barWidth, math.max(iconSize, barHeight + 2 * outset))
+  frame.icon:SetSize(iconSize, iconSize)
+  frame.bar:SetSize(barWidth, barHeight)
+  frame.icon:ClearAllPoints()
+  frame.bar:ClearAllPoints()
+  if iconOnRight then
+    frame.bar:SetPoint("LEFT", frame, "LEFT")
+    frame.icon:SetPoint("LEFT", frame.bar, "RIGHT", gap, 0)
+  else
+    frame.icon:SetPoint("LEFT", frame, "LEFT")
+    frame.bar:SetPoint("LEFT", frame.icon, "RIGHT", gap, 0)
+  end
+end
+
+-- colorIndex selects this slot's fill color from db.cooldownBuffBarColors
+-- (index matches COOLDOWN_BUFF_SPELL_IDS) — see CreatePreviewFrames.
+function Addon:CreatePreviewCooldownBuffFrame(parent, iconSize, barWidth, barHeight, colorIndex)
+  local db = self.db.profile
+  local frame = CreateFrame("Frame", nil, parent)
+
+  local icon = frame:CreateTexture(nil, "ARTWORK")
+  icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  frame.icon = icon
+
+  local cooldown = CreateFrame("Cooldown", nil, frame, "CooldownFrameTemplate")
+  cooldown:SetAllPoints(icon)
+  cooldown:SetHideCountdownNumbers(false)
+  cooldown:SetDrawBling(false)
+  frame.cooldown = cooldown
+
+  local bar = CreateFrame("StatusBar", nil, frame)
+  local barTexturePath = LSM and LSM:Fetch("statusbar", db.cooldownBuffBarTexture, true)
+  bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
+  local bc = (colorIndex and db.cooldownBuffBarColors[colorIndex]) or db.barColor
+  bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
+  frame.bar = bar
+  frame.colorIndex = colorIndex
+
+  local barBorder = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+  local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0)
+  barBorder:SetPoint("TOPLEFT", bar, "TOPLEFT", -outset, outset)
+  barBorder:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", outset, -outset)
+  frame.barBorder = barBorder
+  ApplyCooldownBuffBarBorder(barBorder, db)
+
+  LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight, db.cooldownBuffBarBorderInset)
+  icon:SetShown(db.cooldownBuffShowIcon ~= false)
+  cooldown:SetShown(db.cooldownBuffShowIcon ~= false)
+  bar:SetShown(db.cooldownBuffShowBar ~= false)
+  barBorder:SetShown(db.cooldownBuffShowBar ~= false)
+
+  local barBg = bar:CreateTexture(nil, "BACKGROUND")
+  barBg:SetAllPoints(bar)
+  local bgc = db.cooldownBuffBarBackgroundColor
+  barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+  frame.barBg = barBg
+
+  local nameFS = bar:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+  nameFS:SetPoint("LEFT", bar, "LEFT", 3, 0)
+  nameFS:SetJustifyH("LEFT")
+  frame.nameFS = nameFS
+
+  local fontPath = GetAppearanceFontPath(db.appearanceFont)
+  local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
+  local countdownFS = cooldown:GetCountdownFontString()
+  if countdownFS then
+    countdownFS:SetFont(fontPath, fontSize, "")
+    local tc = db.cooldownBuffNormalColor
+    if tc then
+      countdownFS:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+    end
+  end
+  nameFS:SetFont(fontPath, fontSize, "")
+
+  frame:Hide()
+  return frame
+end
+
+-- Re-applies font/color/bar-texture/size/border to the Config Mode preview
+-- slots live — plain frames, never secret aura buttons, so (unlike the real
+-- row's ReapplyLiveAuraButtonSettings) no combat guard is needed.
+function Addon:ReapplyPreviewCooldownBuffBarSettings()
+  if not Bar or not Bar.previewCooldownBuff then return end
+
+  local db = self.db.profile
+  local iconSize = db.appearanceIconSize
+  local barWidth, barHeight = db.cooldownBuffBarWidth, db.cooldownBuffBarHeight
+  local gap, iconOnRight = db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight
+  local fontPath = GetAppearanceFontPath(db.appearanceFont)
+  local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
+  local barTexturePath = LSM and LSM:Fetch("statusbar", db.cooldownBuffBarTexture, true)
+  local tc = db.cooldownBuffNormalColor
+
+  for _, frame in ipairs(Bar.previewCooldownBuff) do
+    LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
+    if frame.icon then frame.icon:SetShown(db.cooldownBuffShowIcon ~= false) end
+    if frame.cooldown then frame.cooldown:SetShown(db.cooldownBuffShowIcon ~= false) end
+    if frame.bar then frame.bar:SetShown(db.cooldownBuffShowBar ~= false) end
+    if frame.barBorder then frame.barBorder:SetShown(db.cooldownBuffShowBar ~= false) end
+    if frame.bar then
+      frame.bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
+      local bc = (frame.colorIndex and db.cooldownBuffBarColors[frame.colorIndex]) or db.barColor
+      if bc then
+        frame.bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
+      end
+    end
+    if frame.barBg then
+      local bgc = db.cooldownBuffBarBackgroundColor
+      frame.barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+    end
+    if frame.barBorder and frame.bar then
+      -- Plain frame, never a secure AuraButton — safe to reposition live,
+      -- unlike the real row's border (see LayoutCooldownBuffBar's comment).
+      local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0)
+      frame.barBorder:ClearAllPoints()
+      frame.barBorder:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -outset, outset)
+      frame.barBorder:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", outset, -outset)
+      ApplyCooldownBuffBarBorder(frame.barBorder, db)
+    end
+    local countdownFS = frame.cooldown and frame.cooldown:GetCountdownFontString()
+    if countdownFS then
+      countdownFS:SetFont(fontPath, fontSize, "")
+      if tc then
+        countdownFS:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+      end
+    end
+    if frame.nameFS then
+      frame.nameFS:SetFont(fontPath, fontSize, "")
+    end
+  end
 end
 
 -------------------------------------------------------------------------------
@@ -1013,9 +1488,11 @@ end
 -------------------------------------------------------------------------------
 
 -- Creates a single icon: a texture plus a real Cooldown widget (visible
--- swipe + countdown number). Used only for Config Mode's preview icons —
--- the debuff/buff/cooldown-buff rows themselves use real AuraButtons
--- instead, this is purely their fake-data stand-in while positioning.
+-- swipe + countdown number). Used for the Debuffs/Proccs preview icons
+-- (Bar.previewDebuff/previewPlayerBuff) — the cooldown-buff preview uses
+-- CreatePreviewCooldownBuffFrame instead (icon+bar combo, see that
+-- function); this one is purely a fake-data stand-in for the plain-icon
+-- rows while positioning.
 -- Own plain frame (not an AuraButton), so — unlike InitializeAuraButton —
 -- its font styling isn't create-time-locked; kept consistent with it anyway
 -- since this only ever runs once per preview icon too (created once at
@@ -1091,9 +1568,13 @@ function Addon:CreatePreviewFrames()
   for i = 1, NUM_PLAYER_BUFF_SLOTS do
     Bar.previewPlayerBuff[i] = self:CreateIconFrame(UIParent, size)
   end
+  -- Plain icon+bar combo mimicking the real cooldown-buff row's look (see
+  -- CreatePreviewCooldownBuffFrame) — Config Mode's preview matches the real
+  -- widget's appearance, not just a bare icon.
   Bar.previewCooldownBuff = {}
   for i = 1, NUM_COOLDOWN_BUFF_SLOTS do
-    Bar.previewCooldownBuff[i] = self:CreateIconFrame(UIParent, size)
+    Bar.previewCooldownBuff[i] = self:CreatePreviewCooldownBuffFrame(
+      UIParent, size, db.cooldownBuffBarWidth, db.cooldownBuffBarHeight, i)
   end
 end
 
@@ -1164,13 +1645,31 @@ function Addon:RepositionPreviewFrames()
     frame:SetPoint("CENTER", Bar, "CENTER", o.x, o.y)
   end
 
-  -- Vertical stack, top-down — matches CreateCooldownBuffAuraContainer's
-  -- SetFlowLayoutAnchorPoint("TOP") + pinned MaximumLineSize.
-  local cdStep = size + (db.cooldownBuffSpacing or 8)
+  -- Vertical stack, top-down — identical formula to
+  -- RepositionCooldownBuffContainers. Sizing itself is left to
+  -- ReapplyPreviewCooldownBuffBarSettings, not set here — this frame type
+  -- isn't a plain size x size square like the other preview rows.
+  --
+  -- The real row's AuraContainer only ever tracks the icon's own width
+  -- (SetFlowLayoutMaximumLineSize/elementWidth = appearanceIconSize), so its
+  -- "TOP" anchor's center-x is always the icon's own center, unaffected by
+  -- the fill bar. This wrapper frame's width is icon+gap+bar (see
+  -- LayoutPreviewCooldownBuffFrame), so anchoring its own "TOP" directly at
+  -- cooldownBuffPosX moved the icon sideways whenever Bar Spacing or Bar
+  -- Width changed — confirmed in-game. The extra half-width-of-(gap+bar)
+  -- offset below cancels that out so the icon's center lands at the exact
+  -- same x the real row uses, regardless of gap/bar width/Icon on Right.
+  local gap, iconOnRight = db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight
+  local barWidth = db.cooldownBuffBarWidth or 0
+  local iconCenterOffset = (gap + barWidth) / 2
+  if iconOnRight then
+    iconCenterOffset = -iconCenterOffset
+  end
+  local borderOutset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0))
+  local cdStep = math.max(size, (db.cooldownBuffBarHeight or size) + 2 * borderOutset) + (db.cooldownBuffSpacing or 8)
   for i, frame in ipairs(Bar.previewCooldownBuff) do
-    frame:SetSize(size, size)
     frame:ClearAllPoints()
-    frame:SetPoint("TOP", Bar, "BOTTOM", db.cooldownBuffPosX or 0, (db.cooldownBuffPosY or -80) - (i - 1) * cdStep)
+    frame:SetPoint("TOP", Bar, "BOTTOM", (db.cooldownBuffPosX or 0) + iconCenterOffset, (db.cooldownBuffPosY or -80) - (i - 1) * cdStep)
   end
 end
 
@@ -1201,7 +1700,20 @@ function Addon:UpdatePreviewFrames()
           if not frame.previewExpire or GetTime() >= frame.previewExpire then
             local duration = math.random(1, 15)
             frame.previewExpire = GetTime() + duration
+            frame.previewDuration = duration
             frame.cooldown:SetCooldown(GetTime(), duration)
+          end
+          -- Cooldown-buff preview only: dummy fill bar + spell name, driven
+          -- off the same fake start/duration as the Cooldown ring above.
+          -- Ticks in 0.5s steps (the Config Mode ticker's rate, see
+          -- SetPreviewMode) rather than animating smoothly like the ring's
+          -- own native swipe — good enough for a positioning aid.
+          if frame.bar then
+            frame.bar:SetMinMaxValues(0, frame.previewDuration)
+            frame.bar:SetValue(math.max(0, frame.previewExpire - GetTime()), Enum.StatusBarInterpolation.ExponentialEaseOut)
+          end
+          if frame.nameFS then
+            frame.nameFS:SetText(ShortSpellName(spellID))
           end
           local stacks = stackCounts and stackCounts[i]
           if stacks and frame.stackText then
@@ -1260,12 +1772,13 @@ function Addon:ApplyGlobalFont()
 end
 
 -- Applies the LibSharedMedia bar-fill texture and the decorative border
--- (texture/thickness/inset/color) to the plain, addon-owned Bar/Bar.bg
--- frames — neither is an AuraButton, so this is always safe to call live,
--- no combat gating needed. The border lives on Bar.bg (already sized 4px
--- larger than Bar) via SetBackdrop's edgeFile, not on Bar itself, so it
--- frames the bar from the outside without interfering with the status
--- bar's own fill texture.
+-- (texture/thickness/color) to the plain, addon-owned Bar/Bar.bg/
+-- Bar.bg.border frames — none is an AuraButton, so this is always safe to
+-- call live, no combat gating needed. The border lives on its own frame
+-- (Bar.bg.border, sized a few px larger than Bar — see UpdateBar/
+-- CreateEnergyBar for the inset-adjustable padding), separate from the
+-- fixed-size background panel (Bar.bg itself) so Border Position (Inset)
+-- can't distort the background panel — see CreateEnergyBar's comment.
 function Addon:ApplyBarAppearance()
   if not Bar or not Bar.bg then return end
 
@@ -1276,7 +1789,13 @@ function Addon:ApplyBarAppearance()
   local bc = db.barColor
   Bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
 
-  if Bar.bg.SetBackdrop then
+  if Bar.bg.bgTex then
+    local bgc = db.barBackgroundColor
+    Bar.bg.bgTex:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+  end
+
+  local border = Bar.bg.border
+  if border and border.SetBackdrop then
     -- Clearing first, then setting fresh, rather than just re-calling
     -- SetBackdrop with updated edgeSize/insets in place: confirmed live
     -- that an in-place re-call left edgeSize/color stuck at their
@@ -1284,27 +1803,30 @@ function Addon:ApplyBarAppearance()
     -- cache/reuse the border regions' layout keyed off the backdrop table
     -- rather than fully recomputing them on every SetBackdrop call. A nil
     -- reset forces it to tear down and rebuild from scratch every time.
-    Bar.bg:SetBackdrop(nil)
+    border:SetBackdrop(nil)
 
+    -- No insets field here — confirmed by reading Blizzard_SharedXML/
+    -- Backdrop.lua's ApplyBackdrop directly that backdropInfo.insets only
+    -- repositions the backdrop's own "Center" bg region, and only when a
+    -- bgFile is set. We never set bgFile on this frame, so an insets table
+    -- here would be entirely inert. Border Position (Inset) is instead
+    -- implemented by resizing this border frame around Bar (see UpdateBar/
+    -- CreateEnergyBar), independently of the fixed-size Bar.bg panel.
     local borderPath = (LSM and LSM:Fetch("border", db.barBorderTexture, true)) or FALLBACK_BORDER_PATH
-    Bar.bg:SetBackdrop({
+    border:SetBackdrop({
       edgeFile = borderPath,
       edgeSize = db.barBorderSize,
-      insets = {
-        left = db.barBorderInset, right = db.barBorderInset,
-        top = db.barBorderInset, bottom = db.barBorderInset,
-      },
     })
     local c = db.barBorderColor
-    Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+    border:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
     -- The freshly (re)created backdrop's edge regions occasionally settle
     -- back to full alpha a frame after SetBackdrop returns (the RGB
     -- portion sticks immediately, only alpha snaps back) — reapplying
     -- once more next frame wins that race instead of leaving the border
     -- stuck opaque.
     C_Timer.After(0, function()
-      if Bar and Bar.bg and Bar.bg.SetBackdropBorderColor then
-        Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+      if Bar and Bar.bg and Bar.bg.border and Bar.bg.border.SetBackdropBorderColor then
+        Bar.bg.border:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
       end
     end)
   end
@@ -1318,9 +1840,20 @@ function Addon:UpdateBar()
 
   local db = self.db.profile
 
+  -- Background panel: always exactly Bar's own size, never affected by
+  -- the inset below (see CreateEnergyBar's comment).
   Bar.bg:ClearAllPoints()
-  Bar.bg:SetSize(db.width + 4, db.height + 4)
+  Bar.bg:SetSize(db.width, db.height)
   Bar.bg:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+
+  -- Border: separate frame, sized via Border Position (Inset) — not via
+  -- Blizzard's backdrop insets field, see ApplyBarAppearance's comment.
+  if Bar.bg.border then
+    local pad = 2 - (db.barBorderInset or 0)
+    Bar.bg.border:ClearAllPoints()
+    Bar.bg.border:SetSize(math.max(1, db.width + 2 * pad), math.max(1, db.height + 2 * pad))
+    Bar.bg.border:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+  end
 
   Bar:ClearAllPoints()
   Bar:SetSize(db.width, db.height)
@@ -1329,7 +1862,7 @@ function Addon:UpdateBar()
   self:ApplyBarAppearance()
   self:RepositionDebuffContainers()
   self:RepositionBuffContainers()
-  self:RepositionCooldownBuffContainer()
+  self:RepositionCooldownBuffContainers()
   self:RepositionPreviewFrames()
   self:UpdateDebuffContainerFilters()
   self:UpdateBuffContainerFilters()
@@ -1337,6 +1870,7 @@ function Addon:UpdateBar()
   self:UpdatePreviewFrames()
   self:ReapplyLiveAuraButtonSettings()
   self:ReapplyLiveIconFrameFonts()
+  self:ReapplyPreviewCooldownBuffBarSettings()
   -- Keeps the Rake preview's Pandemic Glow (icon size, WoW-style ring size)
   -- in sync with any setting that goes through UpdateBar.
   self:ReapplyPandemicPreviewGlowSettings()
@@ -1355,8 +1889,22 @@ function Addon:UpdateBar()
 
   self:ApplyGlobalFont()
 
-  local current = UnitPower("player", 3)
+  -- Config Mode: force-show a fixed half-full bar instead of the player's
+  -- real energy, so the fill level stays stable/predictable while
+  -- positioning (mirrors the dummy values UpdatePreviewFrames/
+  -- RefreshComboPointBuffer feed the other rows).
+  --
+  -- math.floor only ever runs on the plain Config Mode half-max number,
+  -- never on the real (possibly secret) UnitPower value below — confirmed
+  -- in-game that flooring the merged value threw "attempt to perform
+  -- numeric conversion on a secret number value" during a profile reset
+  -- (ResetProfile -> OnProfileRefresh -> UpdateBar), a call chain that
+  -- runs through other addons' embedded Ace3 libraries and ends up
+  -- secret-restricted even outside combat. SetValue/SetText both accept a
+  -- secret number directly as a C-side sink; only Lua-side arithmetic on
+  -- it (like math.floor) is unsafe.
   local max = math.max(1, UnitPowerMax("player", 3))
+  local current = Addon.previewModeActive and math.floor(max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
@@ -1487,14 +2035,16 @@ local function RefreshComboPointBuffer()
   end
 end
 
--- Updates only the displayed energy value (no layout rebuild).
+-- Updates only the displayed energy value (no layout rebuild). Config Mode:
+-- force-show a fixed half-full bar instead of the player's real energy —
+-- see UpdateBar's identical guard.
 local function RefreshValue()
   if not Bar or not Bar:IsShown() then
     return
   end
 
-  local current = UnitPower("player", 3)
   local max = math.max(1, UnitPowerMax("player", 3))
+  local current = Addon.previewModeActive and math.floor(max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
@@ -1521,9 +2071,9 @@ function Addon:OnCombatEnded()
     self:CreateBuffAuraContainers()
     self:RepositionBuffContainers()
   end
-  if not Bar.cooldownBuffContainer then
-    self:CreateCooldownBuffAuraContainer()
-    self:RepositionCooldownBuffContainer()
+  if not Bar.cooldownBuffContainers or #Bar.cooldownBuffContainers == 0 then
+    self:CreateCooldownBuffContainers()
+    self:RepositionCooldownBuffContainers()
   end
 
   self:UpdateDebuffContainerFilters()
@@ -1572,7 +2122,7 @@ function Addon:OnShapeshift()
     end
   end
 
-  -- All three gate themselves on Cat Form + combat (ShouldShowInCombat) and
+  -- All four gate themselves on Cat Form + combat (ShouldShowInCombat) and
   -- Config Mode internally.
   self:UpdateDebuffContainerFilters()
   self:UpdateBuffContainerFilters()
@@ -1633,8 +2183,12 @@ function Addon:RefreshMedia()
   self:ApplyGlobalFont()
   self:ReapplyLiveAuraButtonSettings()
   self:ReapplyLiveIconFrameFonts()
+  self:ReapplyPreviewCooldownBuffBarSettings()
 end
 
+-- Only drives the combo-point overflow buffer now — the cooldown-buff row
+-- is a real AuraContainer, fully event-driven by Blizzard internally, same
+-- as the Debuffs/Buffs rows (see UpdateCooldownBuffContainerFilters).
 function Addon:OnUnitAura(event, unit)
   if unit ~= "player" then return end
   RefreshComboPointBuffer()
@@ -2026,7 +2580,9 @@ local function ReportContainers()
   for i = 1, NUM_PLAYER_BUFF_SLOTS do
     ReportContainer("Buff slot " .. i .. " (ids " .. SpellIdsText(PLAYER_BUFF_SPELL_IDS[i]) .. ")", Bar.buffContainers and Bar.buffContainers[i])
   end
-  ReportContainer("Cooldown-buff column", Bar.cooldownBuffContainer)
+  for i = 1, NUM_COOLDOWN_BUFF_SLOTS do
+    ReportContainer("Cooldown-buff slot " .. i .. " (ids " .. SpellIdsText(COOLDOWN_BUFF_SPELL_IDS[i]) .. ")", Bar.cooldownBuffContainers and Bar.cooldownBuffContainers[i])
+  end
   DbgInfo("Target / combat", "UnitExists(target)=" .. tostring(UnitExists("target")) .. " InCombatLockdown=" .. tostring(InCombatLockdown()))
   DbgInfo("Hint", "Pandemic glow: check visually on a Rake/Rip in its last ~30% - Vanilla rules may not have a pandemic window")
 end
