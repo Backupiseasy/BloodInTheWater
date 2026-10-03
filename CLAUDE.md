@@ -61,6 +61,10 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 
 - `Addon.IS_FOREVER` (same formula as ThreatPlates' `Init.lua`) picks the spell set. `Options.lua` reads it
   plus `Addon:IsSlotUsed(row, i)` / `Addon:HasComboPointBuffer()` to hide rows that don't exist there.
+  If Forever ever shows Retail-only rows (Moonfire, Predatory Swiftness) or empty icons (e.g. Berserk in
+  Config Mode), check `IS_FOREVER` first — Blizzard already changed the project ID once, which silently
+  switched the whole addon to the Retail spell set:
+  `/run print(LibStub("AceAddon-3.0"):GetAddon("BloodInTheWater").IS_FOREVER, WOW_PROJECT_ID)`.
 - Spell IDs live in `SPELL_SETS` (`RETAIL` / `FOREVER`); each slot is a **list** of aura IDs because every
   Classic rank of Rake/Rip has its own ID. An empty list = unused slot (container/preview disabled, Options
   row hidden). `DEBUFF_SPELL_SETS` etc. are the precomputed `includeSpellIDs` sets.
@@ -129,7 +133,8 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
    character starts on the shared `"Default"` profile; all profiles are available to all characters.
 
-Plus a "Toggle Config Mode" execute button at the top (order 0).
+Plus a Config Mode execute button at the top (order 0); its label switches between "Enable Config Mode"
+and "Disable Config Mode".
 
 When adding a row of options that needs a guaranteed line break, use
 `GetSpacerEntry(order)` (invisible `width="full"` filler) as the last widget

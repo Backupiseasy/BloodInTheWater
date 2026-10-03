@@ -13,14 +13,14 @@ A Feral Druid addon for Cat Form. It adds its own energy bar, combo points, time
 
 ## More
 
-- **Config Mode** — shows everything at once with placeholder icons, so you can position it all without a target or active buffs
+- **Config Mode** — shows everything at once with the real spell icons and dummy timers, so you can position it all without a target or active buffs
 - **Custom look** — pick your own bar texture, border, and font; the addon's own ones are used again automatically if yours is no longer available
 - **Profiles** — settings are saved in profiles that all of your characters can share, switch, copy, and reset
 - Nothing else to install
 
 ## Configuration
 
-Type `/bitw` to open the configuration dialog.
+Type `/bitw` or click the addon's entry in the Addon Compartment (the addon menu at the minimap) to open the configuration dialog.
 
 - **Energy Bar tab** — e.g. bar size, position, and texture
 - **Combo Points tab** — e.g. text position, font size, and colors
@@ -29,7 +29,7 @@ Type `/bitw` to open the configuration dialog.
 - **Proccs tab** — e.g. icon positions and countdown color
 - **Cooldowns tab** — e.g. fill bar color and texture, icon/bar visibility, position and spacing
 - **Profiles tab** — manage your profiles
-- **Toggle Config Mode** button (top of the dialog) — preview everything at once for positioning
+- **Enable / Disable Config Mode** button (top of the dialog) — preview everything at once for positioning
 
 ## Known limitations
 
