@@ -21,9 +21,10 @@ local Defaults = {
     barColor         = {0.949, 1, 0.043, 1}, -- energy bar fill color + alpha
     barFontSize      = 18,              -- energy value number font size (points)
     barBorderTexture = "PlainBorder",
-    barBorderSize    = 16,               -- edge thickness (px)
+    barBorderSize    = 2,                -- edge thickness (px)
     barBorderInset   = 0,                -- offset of the edge from the bar's own outer edge (px)
     barBorderColor   = {0, 0, 0, 0.3},      -- border color + alpha
+    barBackgroundColor = {0, 0, 0, 0.3},    -- background panel behind the fill, visible through the border
     -- Combo point counter text (anchored relative to the energy bar center).
     cpPosX     = 0,   -- X offset from Bar center (px)
     cpPosY     = 78,  -- Y offset from Bar center (px)
@@ -77,16 +78,13 @@ local Defaults = {
     -- hardcoded — see COOLDOWN_BUFF_SPELL_IDS). Stays one positioned unit
     -- with a Spacing value (stacked vertically), unlike Debuffs/Buffs above
     -- which are individually positioned per slot.
-    cooldownBuffPosX    = -280, -- X offset from Bar center (px)
-    cooldownBuffPosY    = 70,  -- Y offset below Bar bottom (px)
+    cooldownBuffPosX    = -478, -- X offset from Bar center (px)
+    cooldownBuffPosY    = 170,  -- Y offset below Bar bottom (px)
     cooldownBuffSpacing = 4,   -- vertical spacing between stacked icons (px)
     cooldownBuffNormalColor = {1, 1, 1, 1}, -- countdown text color
-    cooldownBuffBarWidth  = 100, -- StatusBar width next to each icon (px)
-    -- = default icon size (32) minus the border's 2px-per-side outset (see
-    -- COOLDOWN_BUFF_BAR_BORDER_OUTSET), so the bordered bar's outer edge
-    -- lines up with the icon's own height by default.
-    cooldownBuffBarHeight = 28,
-    cooldownBuffIconGap     = 2,     -- X offset between icon and bar (px)
+    cooldownBuffBarWidth  = 132, -- StatusBar width next to each icon (px)
+    cooldownBuffBarHeight = 30,
+    cooldownBuffIconGap     = 6,     -- X offset between icon and bar (px)
     cooldownBuffIconOnRight = false, -- icon on the right of the bar instead of the left
     cooldownBuffShowIcon    = true,  -- shows the icon (art + cooldown swipe + countdown number) — independent of cooldownBuffShowBar
     cooldownBuffShowBar     = true,  -- shows the fill bar (+ its border and name label) — independent of cooldownBuffShowIcon
@@ -98,6 +96,7 @@ local Defaults = {
     cooldownBuffBarBorderSize    = 16,
     cooldownBuffBarBorderInset   = 0,
     cooldownBuffBarBorderColor   = {0, 0, 0, 0.3},
+    cooldownBuffBarBackgroundColor = {0, 0, 0, 0.3}, -- each fill bar's background panel, behind the fill
     -- Per-slot bar fill color, index matches COOLDOWN_BUFF_SPELL_IDS. WoW
     -- addons cannot sample a texture's actual pixel data (no such API
     -- exists) — these are hand-picked to approximate each spell icon's most
@@ -582,7 +581,7 @@ function Addon:CreateEnergyBar()
 
   local bgTex = bg:CreateTexture(nil, "BACKGROUND")
   bgTex:SetAllPoints(bg)
-  bgTex:SetColorTexture(0, 0, 0, 0.75)
+  bg.bgTex = bgTex
 
   -- Energy status bar
   Bar = CreateFrame("StatusBar", "BiTWEnergyBar", UIParent)
@@ -865,6 +864,10 @@ function Addon:ReapplyLiveAuraButtonSettings()
           auraButton.Bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
           if barColor then
             auraButton.Bar:SetStatusBarColor(barColor[1], barColor[2], barColor[3], barColor[4] or 1)
+          end
+          if auraButton.BarBg then
+            local bgc = db.cooldownBuffBarBackgroundColor
+            auraButton.BarBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
           end
           if auraButton.BarBorder then
             -- Color only here, never a full SetBackdrop rebuild — confirmed
@@ -1195,7 +1198,9 @@ local function AttachCooldownBuffBar(auraButton, spellID, barColor)
 
   local barBg = bar:CreateTexture(nil, "BACKGROUND")
   barBg:SetAllPoints(bar)
-  barBg:SetColorTexture(0, 0, 0, 0.5)
+  local bgc = db.cooldownBuffBarBackgroundColor
+  barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+  auraButton.BarBg = barBg
 
   -- Independent frame, not a child texture of bar — sized/anchored by
   -- LayoutCooldownBuffBar below (explicit SetSize, not two-corner anchoring
@@ -1371,7 +1376,8 @@ function Addon:CreatePreviewCooldownBuffFrame(parent, iconSize, barWidth, barHei
 
   local barBg = bar:CreateTexture(nil, "BACKGROUND")
   barBg:SetAllPoints(bar)
-  barBg:SetColorTexture(0, 0, 0, 0.5)
+  local bgc = db.cooldownBuffBarBackgroundColor
+  barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
   frame.barBg = barBg
 
   local nameFS = bar:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
@@ -1422,6 +1428,10 @@ function Addon:ReapplyPreviewCooldownBuffBarSettings()
       if bc then
         frame.bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
       end
+    end
+    if frame.barBg then
+      local bgc = db.cooldownBuffBarBackgroundColor
+      frame.barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
     end
     if frame.barBorder then
       ApplyCooldownBuffBarBorder(frame.barBorder, db)
@@ -1605,10 +1615,26 @@ function Addon:RepositionPreviewFrames()
   -- RepositionCooldownBuffContainers. Sizing itself is left to
   -- ReapplyPreviewCooldownBuffBarSettings, not set here — this frame type
   -- isn't a plain size x size square like the other preview rows.
+  --
+  -- The real row's AuraContainer only ever tracks the icon's own width
+  -- (SetFlowLayoutMaximumLineSize/elementWidth = appearanceIconSize), so its
+  -- "TOP" anchor's center-x is always the icon's own center, unaffected by
+  -- the fill bar. This wrapper frame's width is icon+gap+bar (see
+  -- LayoutPreviewCooldownBuffFrame), so anchoring its own "TOP" directly at
+  -- cooldownBuffPosX moved the icon sideways whenever Bar Spacing or Bar
+  -- Width changed — confirmed in-game. The extra half-width-of-(gap+bar)
+  -- offset below cancels that out so the icon's center lands at the exact
+  -- same x the real row uses, regardless of gap/bar width/Icon on Right.
+  local gap, iconOnRight = db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight
+  local barWidth = db.cooldownBuffBarWidth or 0
+  local iconCenterOffset = (gap + barWidth) / 2
+  if iconOnRight then
+    iconCenterOffset = -iconCenterOffset
+  end
   local cdStep = math.max(size, (db.cooldownBuffBarHeight or size) + 2 * COOLDOWN_BUFF_BAR_BORDER_OUTSET) + (db.cooldownBuffSpacing or 8)
   for i, frame in ipairs(Bar.previewCooldownBuff) do
     frame:ClearAllPoints()
-    frame:SetPoint("TOP", Bar, "BOTTOM", db.cooldownBuffPosX or 0, (db.cooldownBuffPosY or -80) - (i - 1) * cdStep)
+    frame:SetPoint("TOP", Bar, "BOTTOM", (db.cooldownBuffPosX or 0) + iconCenterOffset, (db.cooldownBuffPosY or -80) - (i - 1) * cdStep)
   end
 end
 
@@ -1727,6 +1753,11 @@ function Addon:ApplyBarAppearance()
   local bc = db.barColor
   Bar:SetStatusBarColor(bc[1], bc[2], bc[3], bc[4] or 1)
 
+  if Bar.bg.bgTex then
+    local bgc = db.barBackgroundColor
+    Bar.bg.bgTex:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
+  end
+
   if Bar.bg.SetBackdrop then
     -- Clearing first, then setting fresh, rather than just re-calling
     -- SetBackdrop with updated edgeSize/insets in place: confirmed live
@@ -1807,12 +1838,16 @@ function Addon:UpdateBar()
 
   self:ApplyGlobalFont()
 
-  local current = UnitPower("player", 3)
+  -- Config Mode: force-show a fixed half-full bar instead of the player's
+  -- real energy, so the fill level stays stable/predictable while
+  -- positioning (mirrors the dummy values UpdatePreviewFrames/
+  -- RefreshComboPointBuffer feed the other rows).
   local max = math.max(1, UnitPowerMax("player", 3))
+  local current = Addon.previewModeActive and (max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
-    Bar.text:SetText(current)
+    Bar.text:SetText(math.floor(current))
   end
 end
 
@@ -1939,18 +1974,20 @@ local function RefreshComboPointBuffer()
   end
 end
 
--- Updates only the displayed energy value (no layout rebuild).
+-- Updates only the displayed energy value (no layout rebuild). Config Mode:
+-- force-show a fixed half-full bar instead of the player's real energy —
+-- see UpdateBar's identical guard.
 local function RefreshValue()
   if not Bar or not Bar:IsShown() then
     return
   end
 
-  local current = UnitPower("player", 3)
   local max = math.max(1, UnitPowerMax("player", 3))
+  local current = Addon.previewModeActive and (max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
-    Bar.text:SetText(current)
+    Bar.text:SetText(math.floor(current))
   end
 end
 

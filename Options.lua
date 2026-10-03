@@ -271,12 +271,29 @@ function Addon:SetupOptions()
                   self:UpdateBar()
                 end
               },
-              barColorFiller = GetSpacerEntry(3),
+              barBackgroundColor = {
+                name = "Bar Background Color",
+                desc = "Color and opacity of the bar's background panel, behind the fill and visible through the border",
+                type = "color",
+                hasAlpha = true,
+                order = 3,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.barBackgroundColor
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.barBackgroundColor
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:UpdateBar()
+                end
+              },
+              barColorFiller = GetSpacerEntry(4),
               barBorderTexture = {
                 name = "Border Texture",
                 desc = "Border texture drawn around the energy bar (LibSharedMedia)",
                 type = "select",
-                order = 4,
+                order = 5,
                 width = 1,
                 values = function()
                   local t = {}
@@ -300,7 +317,7 @@ function Addon:SetupOptions()
                 desc = "Color and opacity of the border",
                 type = "color",
                 hasAlpha = true,
-                order = 5,
+                order = 6,
                 width = 1,
                 get = function()
                   local c = self.db.profile.barBorderColor
@@ -319,7 +336,7 @@ function Addon:SetupOptions()
                 min = 1,
                 max = 32,
                 step = 1,
-                order = 6,
+                order = 7,
                 width = 1,
                 get = function()
                   return self.db.profile.barBorderSize
@@ -336,7 +353,7 @@ function Addon:SetupOptions()
                 min = -20,
                 max = 20,
                 step = 1,
-                order = 7,
+                order = 8,
                 width = 1,
                 get = function()
                   return self.db.profile.barBorderInset
@@ -346,7 +363,7 @@ function Addon:SetupOptions()
                   self:UpdateBar()
                 end
               },
-              borderRowSpacer = GetSpacerEntry(8),
+              borderRowSpacer = GetSpacerEntry(9),
               barFontSize = {
                 name = "Font Size",
                 desc = "Font size of the energy value number (points)",
@@ -354,7 +371,7 @@ function Addon:SetupOptions()
                 min = 8,
                 max = 72,
                 step = 1,
-                order = 9,
+                order = 10,
                 width = "full",
                 get = function()
                   return self.db.profile.barFontSize
@@ -1048,12 +1065,30 @@ function Addon:SetupOptions()
                   self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              barTextureRowSpacer = GetSpacerEntry(13),
+              cooldownBuffBarBackgroundColor = {
+                name = "Bar Background Color",
+                desc = "Color and opacity of each fill bar's background panel, behind the fill",
+                type = "color",
+                hasAlpha = true,
+                order = 13,
+                width = 1,
+                get = function()
+                  local c = self.db.profile.cooldownBuffBarBackgroundColor
+                  return c[1], c[2], c[3], c[4] or 1
+                end,
+                set = function(_, r, g, b, a)
+                  local c = self.db.profile.cooldownBuffBarBackgroundColor
+                  c[1], c[2], c[3], c[4] = r, g, b, a
+                  self:ReapplyLiveAuraButtonSettings()
+                  self:ReapplyPreviewCooldownBuffBarSettings()
+                end
+              },
+              barTextureRowSpacer = GetSpacerEntry(14),
               cooldownBuffBarBorderTexture = {
                 name = "Border Texture",
                 desc = "Border texture drawn around each fill bar (LibSharedMedia). Applies live to the Config Mode preview; already-shown real bars need /reload.",
                 type = "select",
-                order = 14,
+                order = 15,
                 width = 1,
                 values = function()
                   local t = {}
@@ -1078,7 +1113,7 @@ function Addon:SetupOptions()
                 desc = "Color and opacity of the border",
                 type = "color",
                 hasAlpha = true,
-                order = 15,
+                order = 16,
                 width = 1,
                 get = function()
                   local c = self.db.profile.cooldownBuffBarBorderColor
@@ -1098,7 +1133,7 @@ function Addon:SetupOptions()
                 min = 1,
                 max = 32,
                 step = 1,
-                order = 16,
+                order = 17,
                 width = 1,
                 get = function()
                   return self.db.profile.cooldownBuffBarBorderSize
@@ -1116,7 +1151,7 @@ function Addon:SetupOptions()
                 min = -20,
                 max = 20,
                 step = 1,
-                order = 17,
+                order = 18,
                 width = 1,
                 get = function()
                   return self.db.profile.cooldownBuffBarBorderInset
@@ -1127,7 +1162,7 @@ function Addon:SetupOptions()
                   self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              borderRowSpacer = GetSpacerEntry(18)
+              borderRowSpacer = GetSpacerEntry(19)
             }
           },
           layoutGroup = {

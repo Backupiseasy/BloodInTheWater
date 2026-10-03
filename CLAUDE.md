@@ -118,12 +118,12 @@ adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 
 ## Options tabs (Options.lua, in order)
 
-1. **Energy Bar** — Appearance (texture/color, border texture/color/thickness/inset, font size), Layout (size/position)
+1. **Energy Bar** — Appearance (texture/color, border texture/color/thickness/inset, background color, font size), Layout (size/position)
 2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer — hidden on Forever)
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
 4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
 5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, stack-count text position (Predatory Swiftness and stack text hidden on Forever)
-6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury/Berserk/Incarnation; no Incarnation on Forever)
+6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury/Berserk/Incarnation; no Incarnation on Forever)
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
    character starts on the shared `"Default"` profile; all profiles are available to all characters.
 
