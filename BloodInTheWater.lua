@@ -93,7 +93,7 @@ local Defaults = {
     -- (barBorder*) — defaults copied from it, independently configurable
     -- afterward.
     cooldownBuffBarBorderTexture = "PlainBorder",
-    cooldownBuffBarBorderSize    = 16,
+    cooldownBuffBarBorderSize    = 2,
     cooldownBuffBarBorderInset   = 0,
     cooldownBuffBarBorderColor   = {0, 0, 0, 0.3},
     cooldownBuffBarBackgroundColor = {0, 0, 0, 0.3}, -- each fill bar's background panel, behind the fill
@@ -355,7 +355,7 @@ local AuraContainerSortDirection = _G.AuraContainerSortDirection
 -- explicit SetSize with a plain number (computed by us, never read back off
 -- bar) sidesteps that entirely — only bar's own position (not its size) is
 -- still referenced, which Backdrop.lua's width/height math never touches.
-local function LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight)
+local function LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, inset)
   local bar = auraButton.Bar
   if not bar then return end
   bar:SetSize(barWidth, barHeight)
@@ -368,7 +368,14 @@ local function LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconO
 
   local barBorder = auraButton.BarBorder
   if barBorder then
-    local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET
+    -- Blizzard's own backdrop insets (passed to SetBackdrop by
+    -- ApplyCooldownBuffBarBorder) only reposition the backdrop's "Center"
+    -- bg region, and only when a bgFile is set (Blizzard_SharedXML/
+    -- Backdrop.lua's ApplyBackdrop) — confirmed by reading that function
+    -- directly. We never set bgFile (a separate addon-owned texture is
+    -- used instead), so the inset option did nothing at all; implemented
+    -- here instead by actually resizing this frame around bar.
+    local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (inset or 0)
     barBorder:SetSize(barWidth + 2 * outset, barHeight + 2 * outset)
     barBorder:ClearAllPoints()
     barBorder:SetPoint("TOPLEFT", bar, "TOPLEFT", -outset, outset)
@@ -404,14 +411,16 @@ local function ApplyCooldownBuffBarBorder(barBorder, db)
   if not barBorder or not barBorder.SetBackdrop then return end
 
   barBorder:SetBackdrop(nil)
+  -- No insets field here — see ApplyBarAppearance's comment (Blizzard's
+  -- backdrop insets only move the "Center" bg region, and only with a
+  -- bgFile, which this never sets). Border Position (Inset) is instead
+  -- implemented via barBorder's own size/anchor (see LayoutCooldownBuffBar
+  -- and the two call sites that create/reposition the Config Mode preview's
+  -- equivalent frame).
   local borderPath = (LSM and LSM:Fetch("border", db.cooldownBuffBarBorderTexture, true)) or FALLBACK_BORDER_PATH
   barBorder:SetBackdrop({
     edgeFile = borderPath,
     edgeSize = db.cooldownBuffBarBorderSize,
-    insets = {
-      left = db.cooldownBuffBarBorderInset, right = db.cooldownBuffBarBorderInset,
-      top = db.cooldownBuffBarBorderInset, bottom = db.cooldownBuffBarBorderInset,
-    },
   })
   local c = db.cooldownBuffBarBorderColor
   barBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
@@ -572,16 +581,34 @@ end
 function Addon:CreateEnergyBar()
   local db = self.db.profile
 
-  -- Background frame (also carries the decorative border — see
-  -- ApplyBarAppearance). BackdropTemplate mixin needed for SetBackdrop.
-  local bg = CreateFrame("Frame", "BiTWEnergyBarBG", UIParent, "BackdropTemplate")
+  -- Background panel — always exactly Bar's own size (same convention the
+  -- cooldown-buff bars' BarBg already uses via SetAllPoints(bar)), never
+  -- affected by Border Position (Inset). Carries only the background
+  -- color texture; the border lives on its own separate frame (bg.border
+  -- below) so that moving the border can't also resize/distort this panel
+  -- — confirmed in-game that sharing one frame for both made the Bar
+  -- Background Color panel grow/shrink along with the border instead of
+  -- staying put.
+  local bg = CreateFrame("Frame", "BiTWEnergyBarBG", UIParent)
   bg:SetFrameStrata("BACKGROUND")
-  bg:SetSize(db.width + 4, db.height + 4)
+  bg:SetSize(db.width, db.height)
   bg:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
 
   local bgTex = bg:CreateTexture(nil, "BACKGROUND")
   bgTex:SetAllPoints(bg)
   bg.bgTex = bgTex
+
+  -- Decorative border — separate frame from bg above, sized independently
+  -- so Border Position (Inset) can move it without touching the
+  -- background panel. Parented to bg (not a UIParent sibling) so Show/Hide
+  -- on bg cascades to it automatically. BackdropTemplate mixin needed for
+  -- SetBackdrop.
+  local border = CreateFrame("Frame", "BiTWEnergyBarBorder", bg, "BackdropTemplate")
+  border:SetFrameStrata("BACKGROUND")
+  local pad = 2 - (db.barBorderInset or 0)
+  border:SetSize(math.max(1, db.width + 2 * pad), math.max(1, db.height + 2 * pad))
+  border:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+  bg.border = border
 
   -- Energy status bar
   Bar = CreateFrame("StatusBar", "BiTWEnergyBar", UIParent)
@@ -860,7 +887,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
         -- Cooldown-buff bar (nil for Debuffs/Buffs buttons, which never get
         -- one — see AttachCooldownBuffBar).
         if auraButton.Bar then
-          LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight)
+          LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
           auraButton.Bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
           if barColor then
             auraButton.Bar:SetStatusBarColor(barColor[1], barColor[2], barColor[3], barColor[4] or 1)
@@ -1221,7 +1248,7 @@ local function AttachCooldownBuffBar(auraButton, spellID, barColor)
   nameFS:SetText(ShortSpellName(spellID))
   auraButton.BarName = nameFS
 
-  LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight)
+  LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
   ApplyCooldownBuffIconBarVisibility(auraButton, db)
 
   -- Always eased, never instant-jump — no user-facing toggle for this.
@@ -1303,7 +1330,8 @@ function Addon:RepositionCooldownBuffContainers()
   if not Bar or not Bar.cooldownBuffContainers then return end
 
   local db = self.db.profile
-  local rowHeight = math.max(db.appearanceIconSize, db.cooldownBuffBarHeight + 2 * COOLDOWN_BUFF_BAR_BORDER_OUTSET)
+  local borderOutset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0))
+  local rowHeight = math.max(db.appearanceIconSize, db.cooldownBuffBarHeight + 2 * borderOutset)
   local step = rowHeight + (db.cooldownBuffSpacing or 4)
   for i, container in ipairs(Bar.cooldownBuffContainers) do
     container:ClearAllPoints()
@@ -1321,8 +1349,8 @@ end
 -- StatusBar stand-in instead. Unlike the real row, sizing/positioning is
 -- self-contained in one wrapper frame (frame.icon/.bar), since there's no
 -- AuraButton to double as the icon.
-local function LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight)
-  local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET
+local function LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight, inset)
+  local outset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (inset or 0))
   frame:SetSize(iconSize + gap + barWidth, math.max(iconSize, barHeight + 2 * outset))
   frame.icon:SetSize(iconSize, iconSize)
   frame.bar:SetSize(barWidth, barHeight)
@@ -1362,13 +1390,13 @@ function Addon:CreatePreviewCooldownBuffFrame(parent, iconSize, barWidth, barHei
   frame.colorIndex = colorIndex
 
   local barBorder = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-  local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET
+  local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0)
   barBorder:SetPoint("TOPLEFT", bar, "TOPLEFT", -outset, outset)
   barBorder:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", outset, -outset)
   frame.barBorder = barBorder
   ApplyCooldownBuffBarBorder(barBorder, db)
 
-  LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight)
+  LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight, db.cooldownBuffBarBorderInset)
   icon:SetShown(db.cooldownBuffShowIcon ~= false)
   cooldown:SetShown(db.cooldownBuffShowIcon ~= false)
   bar:SetShown(db.cooldownBuffShowBar ~= false)
@@ -1417,7 +1445,7 @@ function Addon:ReapplyPreviewCooldownBuffBarSettings()
   local tc = db.cooldownBuffNormalColor
 
   for _, frame in ipairs(Bar.previewCooldownBuff) do
-    LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight)
+    LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight, db.cooldownBuffBarBorderInset)
     if frame.icon then frame.icon:SetShown(db.cooldownBuffShowIcon ~= false) end
     if frame.cooldown then frame.cooldown:SetShown(db.cooldownBuffShowIcon ~= false) end
     if frame.bar then frame.bar:SetShown(db.cooldownBuffShowBar ~= false) end
@@ -1433,7 +1461,13 @@ function Addon:ReapplyPreviewCooldownBuffBarSettings()
       local bgc = db.cooldownBuffBarBackgroundColor
       frame.barBg:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
     end
-    if frame.barBorder then
+    if frame.barBorder and frame.bar then
+      -- Plain frame, never a secure AuraButton — safe to reposition live,
+      -- unlike the real row's border (see LayoutCooldownBuffBar's comment).
+      local outset = COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0)
+      frame.barBorder:ClearAllPoints()
+      frame.barBorder:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -outset, outset)
+      frame.barBorder:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", outset, -outset)
       ApplyCooldownBuffBarBorder(frame.barBorder, db)
     end
     local countdownFS = frame.cooldown and frame.cooldown:GetCountdownFontString()
@@ -1631,7 +1665,8 @@ function Addon:RepositionPreviewFrames()
   if iconOnRight then
     iconCenterOffset = -iconCenterOffset
   end
-  local cdStep = math.max(size, (db.cooldownBuffBarHeight or size) + 2 * COOLDOWN_BUFF_BAR_BORDER_OUTSET) + (db.cooldownBuffSpacing or 8)
+  local borderOutset = math.max(0, COOLDOWN_BUFF_BAR_BORDER_OUTSET - (db.cooldownBuffBarBorderInset or 0))
+  local cdStep = math.max(size, (db.cooldownBuffBarHeight or size) + 2 * borderOutset) + (db.cooldownBuffSpacing or 8)
   for i, frame in ipairs(Bar.previewCooldownBuff) do
     frame:ClearAllPoints()
     frame:SetPoint("TOP", Bar, "BOTTOM", (db.cooldownBuffPosX or 0) + iconCenterOffset, (db.cooldownBuffPosY or -80) - (i - 1) * cdStep)
@@ -1737,12 +1772,13 @@ function Addon:ApplyGlobalFont()
 end
 
 -- Applies the LibSharedMedia bar-fill texture and the decorative border
--- (texture/thickness/inset/color) to the plain, addon-owned Bar/Bar.bg
--- frames — neither is an AuraButton, so this is always safe to call live,
--- no combat gating needed. The border lives on Bar.bg (already sized 4px
--- larger than Bar) via SetBackdrop's edgeFile, not on Bar itself, so it
--- frames the bar from the outside without interfering with the status
--- bar's own fill texture.
+-- (texture/thickness/color) to the plain, addon-owned Bar/Bar.bg/
+-- Bar.bg.border frames — none is an AuraButton, so this is always safe to
+-- call live, no combat gating needed. The border lives on its own frame
+-- (Bar.bg.border, sized a few px larger than Bar — see UpdateBar/
+-- CreateEnergyBar for the inset-adjustable padding), separate from the
+-- fixed-size background panel (Bar.bg itself) so Border Position (Inset)
+-- can't distort the background panel — see CreateEnergyBar's comment.
 function Addon:ApplyBarAppearance()
   if not Bar or not Bar.bg then return end
 
@@ -1758,7 +1794,8 @@ function Addon:ApplyBarAppearance()
     Bar.bg.bgTex:SetColorTexture(bgc[1], bgc[2], bgc[3], bgc[4] or 1)
   end
 
-  if Bar.bg.SetBackdrop then
+  local border = Bar.bg.border
+  if border and border.SetBackdrop then
     -- Clearing first, then setting fresh, rather than just re-calling
     -- SetBackdrop with updated edgeSize/insets in place: confirmed live
     -- that an in-place re-call left edgeSize/color stuck at their
@@ -1766,27 +1803,30 @@ function Addon:ApplyBarAppearance()
     -- cache/reuse the border regions' layout keyed off the backdrop table
     -- rather than fully recomputing them on every SetBackdrop call. A nil
     -- reset forces it to tear down and rebuild from scratch every time.
-    Bar.bg:SetBackdrop(nil)
+    border:SetBackdrop(nil)
 
+    -- No insets field here — confirmed by reading Blizzard_SharedXML/
+    -- Backdrop.lua's ApplyBackdrop directly that backdropInfo.insets only
+    -- repositions the backdrop's own "Center" bg region, and only when a
+    -- bgFile is set. We never set bgFile on this frame, so an insets table
+    -- here would be entirely inert. Border Position (Inset) is instead
+    -- implemented by resizing this border frame around Bar (see UpdateBar/
+    -- CreateEnergyBar), independently of the fixed-size Bar.bg panel.
     local borderPath = (LSM and LSM:Fetch("border", db.barBorderTexture, true)) or FALLBACK_BORDER_PATH
-    Bar.bg:SetBackdrop({
+    border:SetBackdrop({
       edgeFile = borderPath,
       edgeSize = db.barBorderSize,
-      insets = {
-        left = db.barBorderInset, right = db.barBorderInset,
-        top = db.barBorderInset, bottom = db.barBorderInset,
-      },
     })
     local c = db.barBorderColor
-    Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+    border:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
     -- The freshly (re)created backdrop's edge regions occasionally settle
     -- back to full alpha a frame after SetBackdrop returns (the RGB
     -- portion sticks immediately, only alpha snaps back) — reapplying
     -- once more next frame wins that race instead of leaving the border
     -- stuck opaque.
     C_Timer.After(0, function()
-      if Bar and Bar.bg and Bar.bg.SetBackdropBorderColor then
-        Bar.bg:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+      if Bar and Bar.bg and Bar.bg.border and Bar.bg.border.SetBackdropBorderColor then
+        Bar.bg.border:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
       end
     end)
   end
@@ -1800,9 +1840,20 @@ function Addon:UpdateBar()
 
   local db = self.db.profile
 
+  -- Background panel: always exactly Bar's own size, never affected by
+  -- the inset below (see CreateEnergyBar's comment).
   Bar.bg:ClearAllPoints()
-  Bar.bg:SetSize(db.width + 4, db.height + 4)
+  Bar.bg:SetSize(db.width, db.height)
   Bar.bg:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+
+  -- Border: separate frame, sized via Border Position (Inset) — not via
+  -- Blizzard's backdrop insets field, see ApplyBarAppearance's comment.
+  if Bar.bg.border then
+    local pad = 2 - (db.barBorderInset or 0)
+    Bar.bg.border:ClearAllPoints()
+    Bar.bg.border:SetSize(math.max(1, db.width + 2 * pad), math.max(1, db.height + 2 * pad))
+    Bar.bg.border:SetPoint("CENTER", UIParent, "CENTER", db.posX, db.posY)
+  end
 
   Bar:ClearAllPoints()
   Bar:SetSize(db.width, db.height)
