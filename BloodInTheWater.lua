@@ -97,15 +97,13 @@ local Defaults = {
     cooldownBuffBarBorderInset   = 0,
     cooldownBuffBarBorderColor   = {0, 0, 0, 0.3},
     cooldownBuffBarBackgroundColor = {0, 0, 0, 0.3}, -- each fill bar's background panel, behind the fill
-    -- Per-slot bar fill color, index matches COOLDOWN_BUFF_SPELL_IDS. WoW
-    -- addons cannot sample a texture's actual pixel data (no such API
-    -- exists) — these are hand-picked to approximate each spell icon's most
-    -- striking color rather than derived at runtime; override any of them
-    -- in Options if they're off.
+    -- Per-slot bar fill color, index matches COOLDOWN_BUFF_SPELL_IDS (slot 2
+    -- covers both Berserk and Incarnation — they're a mutually exclusive
+    -- talent choice sharing one slot). Hand-picked from each spell icon's
+    -- own art; override either of them in Options if they're off.
     cooldownBuffBarColors = {
       {0.98, 0.75, 0.19, 1}, -- Tiger's Fury: icon's gold/yellow fur (FBC030)
-      {0.68, 0.25, 0.03, 1}, -- Berserk: icon's darker orange-brown (AD4108)
-      {0.65, 0.20, 0.85, 1}, -- Incarnation: purple cat-avatar glow
+      {0.68, 0.25, 0.03, 1}, -- Berserk / Incarnation: icon's darker orange-brown (AD4108)
     },
   }
 }
@@ -165,7 +163,12 @@ local SPELL_SETS = {
   RETAIL = {
     debuffs = {{155722}, {1079}, {155625, 164812}}, -- Rake, Rip, Moonfire (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
     buffs = {{135700}, {69369}, {}},             -- Clearcasting, Predatory Swiftness, (unused)
-    cooldowns = {{5217}, {106951}, {102543}},    -- Tiger's Fury, Berserk, Incarnation
+    -- Berserk and Incarnation: Avatar of Ashamane are a mutually exclusive
+    -- talent choice (only one is ever selectable) — share one slot instead
+    -- of wasting a second, always-empty one, same reasoning as the Moonfire
+    -- dual-ID debuff slot above. See GetActiveCooldownBuffSpellID for how
+    -- the bar's name label picks the right one of the two.
+    cooldowns = {{5217}, {106951, 102543}},      -- Tiger's Fury, Berserk/Incarnation
     cpBuffer = 405189,                           -- Überquellende Macht (combo point overflow buffer)
   },
   FOREVER = {
@@ -254,22 +257,26 @@ local function ShortSpellName(spellID)
 end
 
 -- Returns whichever of slot i's tracked spellIDs the player currently has.
--- COOLDOWN_BUFF_SPELL_IDS[i] is itself a list (see SPELL_SETS above), the
--- same shape the Moonfire dual-ID debuff slot already uses — lets a slot
--- cover more than one possible spell (e.g. a talent that swaps one spell
--- for another). Every cooldown-buff slot currently has exactly one entry,
--- so this always just returns ids[1]; the lookup only matters once a slot
--- genuinely has alternatives. C_SpellBook.IsSpellKnown is plain spellbook/
--- talent data, not aura/cooldown data — not subject to the secret-aura/
--- cooldown restrictions elsewhere in this file, safe to call anytime
--- including combat. Used only for the bar's name label; the AuraContainer
--- itself matches any ID in the slot via COOLDOWN_BUFF_SPELL_SETS[i]
--- regardless of which this picks.
+-- COOLDOWN_BUFF_SPELL_IDS[i] is itself a list (see SPELL_SETS above) — on
+-- Retail, Berserk and Incarnation share one slot since they're a mutually
+-- exclusive talent choice, same reasoning as the Moonfire dual-ID debuff
+-- slot. C_SpellBook.IsSpellKnown is plain spellbook/talent data, not aura/
+-- cooldown data — not subject to the secret-aura/cooldown restrictions
+-- elsewhere in this file, safe to call anytime including combat. Used only
+-- for the bar's name label; the AuraContainer itself matches any ID in the
+-- slot via COOLDOWN_BUFF_SPELL_SETS[i] regardless of which this picks.
 local function GetActiveCooldownBuffSpellID(i)
   local ids = COOLDOWN_BUFF_SPELL_IDS[i] or {}
-  for _, spellID in ipairs(ids) do
-    if C_SpellBook.IsSpellKnown(spellID) then
-      return spellID
+  -- Checked last-to-first, not first-to-last: Berserk/Incarnation list
+  -- Berserk (baseline) before Incarnation (the talent upgrade that
+  -- replaces it) — confirmed in-game that C_SpellBook.IsSpellKnown(Berserk)
+  -- still returns true even with Incarnation talented, so checking in list
+  -- order always picked Berserk and the bar's label never showed
+  -- Incarnation at all. The talent-upgrade entry, listed later, has to win
+  -- when it's known.
+  for j = #ids, 1, -1 do
+    if C_SpellBook.IsSpellKnown(ids[j]) then
+      return ids[j]
     end
   end
   return ids[1]
