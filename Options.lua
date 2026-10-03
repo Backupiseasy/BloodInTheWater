@@ -1007,7 +1007,9 @@ function Addon:SetupOptions()
                 end
               },
               cooldownBuffBarColor2 = {
-                name = "Berserk / Incarnation",
+                name = function()
+                  return Addon.IS_FOREVER and "Berserk" or "Berserk / Incarnation"
+                end,
                 type = "color",
                 hasAlpha = true,
                 order = 9,

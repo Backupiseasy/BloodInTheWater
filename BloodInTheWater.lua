@@ -139,15 +139,13 @@ function Addon:SetPreviewMode(active)
 end
 
 -- "WoW Forever" (Blizzard's Classic-rules client on the modern engine, see
--- ThreatPlates' Init.lua) reports WOW_PROJECT_ID == MAINLINE but a Classic
--- era GetClassicExpansionLevel(). Same detection formula as ThreatPlates.
--- Lives on Addon so Options.lua (separate chunk) can read it too.
-Addon.IS_FOREVER = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE)
-  and type(GetClassicExpansionLevel) == "function"
-  and type(GetClassicExpansionLevel()) == "number"
-  and LE_EXPANSION_MISTS_OF_PANDARIA ~= nil
-  and GetClassicExpansionLevel() <= LE_EXPANSION_MISTS_OF_PANDARIA
-  or false
+-- ThreatPlates' Init.lua) reported WOW_PROJECT_MAINLINE (1) in its first beta
+-- builds and got its own project id with beta patch 1.60.1 (build 70170):
+-- WOW_PROJECT_CAMELOT (18, Blizzard's internal name for Forever). The
+-- constant is only defined on Forever itself, hence the existence check.
+-- Same detection formula as ThreatPlates. Lives on Addon so Options.lua
+-- (separate chunk) can read it too.
+Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT)
 
 -- All spell IDs below are hardcoded, not user-configured — no Options input
 -- field exists for any of them (was tried, reverted per explicit request).
@@ -2434,7 +2432,7 @@ local function ReportClient()
   DbgHeader("Client")
   local version, build, _, interface = GetBuildInfo()
   local expansionLevel = GetClassicExpansionLevel and GetClassicExpansionLevel()
-  DbgInfo("WOW_PROJECT_ID", tostring(WOW_PROJECT_ID) .. " (MAINLINE=" .. tostring(WOW_PROJECT_MAINLINE) .. ", CLASSIC=" .. tostring(WOW_PROJECT_CLASSIC) .. ")")
+  DbgInfo("WOW_PROJECT_ID", tostring(WOW_PROJECT_ID) .. " (MAINLINE=" .. tostring(WOW_PROJECT_MAINLINE) .. ", CLASSIC=" .. tostring(WOW_PROJECT_CLASSIC) .. ", CAMELOT=" .. tostring(WOW_PROJECT_CAMELOT) .. ")")
   DbgInfo("GetClassicExpansionLevel()", expansionLevel)
   DbgInfo("GetBuildInfo()", string.format("version=%s build=%s interface=%s", tostring(version), tostring(build), tostring(interface)))
   DbgInfo("Addon.IS_FOREVER (ThreatPlates formula) - spell set in use", tostring(Addon.IS_FOREVER) .. " - " .. (Addon.IS_FOREVER and "FOREVER" or "RETAIL"))

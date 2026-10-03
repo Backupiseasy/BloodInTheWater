@@ -50,7 +50,9 @@ adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 ## WoW Forever
 
 "WoW Forever" is Blizzard's official Classic-rules client on the modern (Midnight-era) engine: it reports
-`WOW_PROJECT_ID == WOW_PROJECT_MAINLINE` but `GetClassicExpansionLevel() == 0` (Vanilla), Interface `16001`
+`WOW_PROJECT_ID == WOW_PROJECT_CAMELOT` (18, Blizzard's internal name; `WOW_PROJECT_MAINLINE` only in the
+first beta builds, changed with beta patch 1.60.1 / build 70170 — the constant exists only on Forever, so
+check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Interface `16001`
 (in the TOC's Interface line next to Retail's), and has AuraContainers, secret values, `C_Spell`,
 `C_UnitAuras`. Background and the full list of pitfalls: the ThreatPlates repo's
 `Source/Wiki/wow-forever-compatibility.md`.
