@@ -910,7 +910,7 @@ function Addon:SetupOptions()
               cooldownBuffDesc = {
                 name = function()
                   return Addon.IS_FOREVER and "Tracks Tiger's Fury and Berserk."
-                    or "Tracks Tiger's Fury, Berserk, and Incarnation."
+                    or "Tracks Tiger's Fury and Berserk/Incarnation (a talent choice — they share one slot)."
                 end,
                 type = "description",
                 order = 1,
@@ -1007,7 +1007,7 @@ function Addon:SetupOptions()
                 end
               },
               cooldownBuffBarColor2 = {
-                name = "Berserk",
+                name = "Berserk / Incarnation",
                 type = "color",
                 hasAlpha = true,
                 order = 9,
@@ -1023,29 +1023,12 @@ function Addon:SetupOptions()
                   self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              cooldownBuffBarColor3 = {
-                name = "Incarnation",
-                type = "color",
-                hasAlpha = true,
-                order = 10,
-                width = 1,
-                get = function()
-                  local c = self.db.profile.cooldownBuffBarColors[3]
-                  return c[1], c[2], c[3], c[4] or 1
-                end,
-                set = function(_, r, g, b, a)
-                  local c = self.db.profile.cooldownBuffBarColors[3]
-                  c[1], c[2], c[3], c[4] = r, g, b, a
-                  self:ReapplyLiveAuraButtonSettings()
-                  self:ReapplyPreviewCooldownBuffBarSettings()
-                end
-              },
-              barColorsRowSpacer = GetSpacerEntry(11),
+              barColorsRowSpacer = GetSpacerEntry(10),
               cooldownBuffBarTexture = {
                 name = "Bar Texture",
                 desc = "Fill texture of each cooldown-buff bar (LibSharedMedia)",
                 type = "select",
-                order = 12,
+                order = 11,
                 width = 1,
                 values = function()
                   local t = {}
@@ -1070,7 +1053,7 @@ function Addon:SetupOptions()
                 desc = "Color and opacity of each fill bar's background panel, behind the fill",
                 type = "color",
                 hasAlpha = true,
-                order = 13,
+                order = 12,
                 width = 1,
                 get = function()
                   local c = self.db.profile.cooldownBuffBarBackgroundColor
@@ -1083,12 +1066,12 @@ function Addon:SetupOptions()
                   self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              barTextureRowSpacer = GetSpacerEntry(14),
+              barTextureRowSpacer = GetSpacerEntry(13),
               cooldownBuffBarBorderTexture = {
                 name = "Border Texture",
                 desc = "Border texture drawn around each fill bar (LibSharedMedia). Applies live to the Config Mode preview; already-shown real bars need /reload.",
                 type = "select",
-                order = 15,
+                order = 14,
                 width = 1,
                 values = function()
                   local t = {}
@@ -1113,7 +1096,7 @@ function Addon:SetupOptions()
                 desc = "Color and opacity of the border",
                 type = "color",
                 hasAlpha = true,
-                order = 16,
+                order = 15,
                 width = 1,
                 get = function()
                   local c = self.db.profile.cooldownBuffBarBorderColor
@@ -1133,7 +1116,7 @@ function Addon:SetupOptions()
                 min = 1,
                 max = 32,
                 step = 1,
-                order = 17,
+                order = 16,
                 width = 1,
                 get = function()
                   return self.db.profile.cooldownBuffBarBorderSize
@@ -1151,7 +1134,7 @@ function Addon:SetupOptions()
                 min = -20,
                 max = 20,
                 step = 1,
-                order = 18,
+                order = 17,
                 width = 1,
                 get = function()
                   return self.db.profile.cooldownBuffBarBorderInset
@@ -1162,7 +1145,7 @@ function Addon:SetupOptions()
                   self:ReapplyPreviewCooldownBuffBarSettings()
                 end
               },
-              borderRowSpacer = GetSpacerEntry(19)
+              borderRowSpacer = GetSpacerEntry(18)
             }
           },
           layoutGroup = {

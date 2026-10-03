@@ -6,6 +6,7 @@
 * Changed the default cooldown settings to better match WoW's modern UI look.
 * Changed Config Mode to show the energy bar at a fixed 50% fill instead of the player's real energy.
 * Fixed the Border Position (Inset) option having no effect on the energy bar or the cooldown-buff bars, caused by Blizzard's backdrop API only ever repositioning a background texture neither bar uses.
+* Changed Berserk and Incarnation to share a single cooldown-buff slot instead of two, since the underlying talents are mutually exclusive.
 
 ------------------------------------------------------
 1.1.0 (2026-09-24)
