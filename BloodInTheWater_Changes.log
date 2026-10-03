@@ -1,5 +1,5 @@
 ------------------------------------------------------
-1.2.0 (2026-10-02)
+1.2.0 (2026-10-03)
 ------------------------------------------------------
 * Added a fill bar next to each cooldown-buff icon, showing the buff's remaining duration.
 * Added a Bar Background Color option to the Energy Bar and Cooldowns tabs.
