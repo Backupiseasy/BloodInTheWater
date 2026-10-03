@@ -14,6 +14,7 @@
 * Removed the Smooth Bar Animation option from the Cooldowns tab — the fill bar now always animates smoothly.
 * Changed the Cooldowns tab's Appearance and Layout sections to match the Energy Bar tab's layout: Bar Colors and the bar border options moved into Appearance; X/Y Offset, Row Spacing, Bar Width/Height/Spacing and Icon on Right regrouped under Layout.
 * Changed the default Tiger's Fury and Berserk bar colors to match their ability icon art.
+* Added Show Icon and Show Bar options to the Cooldowns tab, independently toggling each slot's icon and fill bar.
 
 ------------------------------------------------------
 1.1.0 (2026-09-24)

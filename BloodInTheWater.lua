@@ -88,6 +88,8 @@ local Defaults = {
     cooldownBuffBarHeight = 28,
     cooldownBuffIconGap     = 2,     -- X offset between icon and bar (px)
     cooldownBuffIconOnRight = false, -- icon on the right of the bar instead of the left
+    cooldownBuffShowIcon    = true,  -- shows the icon (art + cooldown swipe + countdown number) — independent of cooldownBuffShowBar
+    cooldownBuffShowBar     = true,  -- shows the fill bar (+ its border and name label) — independent of cooldownBuffShowIcon
     cooldownBuffBarTexture  = "Smooth", -- fill texture (LibSharedMedia "statusbar" key), independent of the energy bar's own
     -- Border around the fill bar, same option shape as the Energy Bar's own
     -- (barBorder*) — defaults copied from it, independently configurable
@@ -103,7 +105,7 @@ local Defaults = {
     -- in Options if they're off.
     cooldownBuffBarColors = {
       {0.98, 0.75, 0.19, 1}, -- Tiger's Fury: icon's gold/yellow fur (FBC030)
-      {0.29, 0.08, 0.02, 1}, -- Berserk: icon's lighter brown (4B1406)
+      {0.68, 0.25, 0.03, 1}, -- Berserk: icon's darker orange-brown (AD4108)
       {0.65, 0.20, 0.85, 1}, -- Incarnation: purple cat-avatar glow
     },
   }
@@ -372,6 +374,25 @@ local function LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconO
     barBorder:ClearAllPoints()
     barBorder:SetPoint("TOPLEFT", bar, "TOPLEFT", -outset, outset)
   end
+end
+
+-- Shows/hides one cooldown-buff AuraButton's icon half (art + cooldown swipe
+-- + countdown number, all created by InitializeAuraButton) and bar half
+-- (+ its border and name label, created by AttachCooldownBuffBar) independently.
+-- auraButton itself is never hidden — it's the AuraContainer's secure pooled
+-- frame and still has to report its size for the row's layout even with both
+-- halves hidden; only its own child visuals toggle. Shared by
+-- AttachCooldownBuffBar (creation) and ReapplyLiveAuraButtonSettings (live,
+-- out of combat) — plain SetShown calls, same safety class as the other
+-- live Set* calls there.
+local function ApplyCooldownBuffIconBarVisibility(auraButton, db)
+  local showIcon = db.cooldownBuffShowIcon ~= false
+  if auraButton.Icon then auraButton.Icon:SetShown(showIcon) end
+  if auraButton.Cooldown then auraButton.Cooldown:SetShown(showIcon) end
+
+  local showBar = db.cooldownBuffShowBar ~= false
+  if auraButton.Bar then auraButton.Bar:SetShown(showBar) end
+  if auraButton.BarBorder then auraButton.BarBorder:SetShown(showBar) end
 end
 
 -- Builds/rebuilds the border backdrop on one cooldown-buff bar's border
@@ -883,6 +904,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
             interpolation = barInterpolation,
             direction = Enum.StatusBarTimerDirection.RemainingTime,
           })
+          ApplyCooldownBuffIconBarVisibility(auraButton, db)
         end
       end
     end
@@ -1195,6 +1217,7 @@ local function AttachCooldownBuffBar(auraButton, spellID, barColor)
   auraButton.BarName = nameFS
 
   LayoutCooldownBuffBar(auraButton, barWidth, barHeight, gap, iconOnRight)
+  ApplyCooldownBuffIconBarVisibility(auraButton, db)
 
   -- Always eased, never instant-jump — no user-facing toggle for this.
   auraButton:SetDurationBar(bar, {
@@ -1341,6 +1364,10 @@ function Addon:CreatePreviewCooldownBuffFrame(parent, iconSize, barWidth, barHei
   ApplyCooldownBuffBarBorder(barBorder, db)
 
   LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, db.cooldownBuffIconGap or 2, db.cooldownBuffIconOnRight)
+  icon:SetShown(db.cooldownBuffShowIcon ~= false)
+  cooldown:SetShown(db.cooldownBuffShowIcon ~= false)
+  bar:SetShown(db.cooldownBuffShowBar ~= false)
+  barBorder:SetShown(db.cooldownBuffShowBar ~= false)
 
   local barBg = bar:CreateTexture(nil, "BACKGROUND")
   barBg:SetAllPoints(bar)
@@ -1385,6 +1412,10 @@ function Addon:ReapplyPreviewCooldownBuffBarSettings()
 
   for _, frame in ipairs(Bar.previewCooldownBuff) do
     LayoutPreviewCooldownBuffFrame(frame, iconSize, barWidth, barHeight, gap, iconOnRight)
+    if frame.icon then frame.icon:SetShown(db.cooldownBuffShowIcon ~= false) end
+    if frame.cooldown then frame.cooldown:SetShown(db.cooldownBuffShowIcon ~= false) end
+    if frame.bar then frame.bar:SetShown(db.cooldownBuffShowBar ~= false) end
+    if frame.barBorder then frame.barBorder:SetShown(db.cooldownBuffShowBar ~= false) end
     if frame.bar then
       frame.bar:SetStatusBarTexture(barTexturePath or FALLBACK_BAR_TEXTURE_PATH)
       local bc = (frame.colorIndex and db.cooldownBuffBarColors[frame.colorIndex]) or db.barColor
