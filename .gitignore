@@ -10,6 +10,9 @@ desktop.ini
 *.swo
 *~
 
+# Claude Code (local settings/config, not project config)
+.claude/
+
 # WoW packager output
 .release/
 .pkgmeta.bak

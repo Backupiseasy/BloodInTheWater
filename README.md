@@ -8,7 +8,7 @@ A Feral Druid addon for Cat Form. It adds its own energy bar, combo points, time
 - **Combo point display** with a color per combo point count
 - **Debuff timers** for your important DoTs, with a glow when it's time to refresh them early
 - **Proc icons** for procs like Clearcasting
-- **Cooldown icons** for cooldowns like Tiger's Fury and Berserk
+- **Cooldown icons with a fill bar** for cooldowns like Tiger's Fury and Berserk
 - Shown only in combat while in Cat Form, hidden automatically otherwise — no manual toggling needed
 
 ## More
@@ -27,7 +27,7 @@ Type `/bitw` to open the configuration dialog.
 - **Icons tab** — e.g. icon size and font shared by all icons
 - **Debuffs tab** — e.g. icon positions and the refresh glow
 - **Proccs tab** — e.g. icon positions and countdown color
-- **Cooldowns tab** — e.g. icon position and spacing
+- **Cooldowns tab** — e.g. fill bar color and texture, icon/bar visibility, position and spacing
 - **Profiles tab** — manage your profiles
 - **Toggle Config Mode** button (top of the dialog) — preview everything at once for positioning
 
