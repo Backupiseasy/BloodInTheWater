@@ -1893,12 +1893,22 @@ function Addon:UpdateBar()
   -- real energy, so the fill level stays stable/predictable while
   -- positioning (mirrors the dummy values UpdatePreviewFrames/
   -- RefreshComboPointBuffer feed the other rows).
+  --
+  -- math.floor only ever runs on the plain Config Mode half-max number,
+  -- never on the real (possibly secret) UnitPower value below — confirmed
+  -- in-game that flooring the merged value threw "attempt to perform
+  -- numeric conversion on a secret number value" during a profile reset
+  -- (ResetProfile -> OnProfileRefresh -> UpdateBar), a call chain that
+  -- runs through other addons' embedded Ace3 libraries and ends up
+  -- secret-restricted even outside combat. SetValue/SetText both accept a
+  -- secret number directly as a C-side sink; only Lua-side arithmetic on
+  -- it (like math.floor) is unsafe.
   local max = math.max(1, UnitPowerMax("player", 3))
-  local current = Addon.previewModeActive and (max / 2) or UnitPower("player", 3)
+  local current = Addon.previewModeActive and math.floor(max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
-    Bar.text:SetText(math.floor(current))
+    Bar.text:SetText(current)
   end
 end
 
@@ -2034,11 +2044,11 @@ local function RefreshValue()
   end
 
   local max = math.max(1, UnitPowerMax("player", 3))
-  local current = Addon.previewModeActive and (max / 2) or UnitPower("player", 3)
+  local current = Addon.previewModeActive and math.floor(max / 2) or UnitPower("player", 3)
   Bar:SetMinMaxValues(0, max)
   Bar:SetValue(current)
   if Bar.text then
-    Bar.text:SetText(math.floor(current))
+    Bar.text:SetText(current)
   end
 end
 
