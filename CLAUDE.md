@@ -43,7 +43,7 @@ registered (e.g. the SharedMedia addon that provided it got disabled). A new
 bundled asset needs an LSM registration **and** a fallback constant.
 
 `Libs/` is git-ignored (except `embeds.xml`); the packager fills it from the
-`externals:` in `.pkgmeta` (short form = trunk HEAD, like ThreatPlates). For
+`externals:` in `.pkgmeta` (short form = trunk HEAD). For
 local in-game testing, `Libs/` must be filled by hand from the same sources —
 adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 
@@ -54,12 +54,11 @@ adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 first beta builds, changed with beta patch 1.60.1 / build 70170 — the constant exists only on Forever, so
 check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Interface `16001`
 (in the TOC's Interface line next to Retail's), and has AuraContainers, secret values, `C_Spell`,
-`C_UnitAuras`. Background and the full list of pitfalls: the ThreatPlates repo's
-`Source/Wiki/wow-forever-compatibility.md`.
+`C_UnitAuras`.
 
 **Implemented**
 
-- `Addon.IS_FOREVER` (same formula as ThreatPlates' `Init.lua`) picks the spell set. `Options.lua` reads it
+- `Addon.IS_FOREVER` (`WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`) picks the spell set. `Options.lua` reads it
   plus `Addon:IsSlotUsed(row, i)` / `Addon:HasComboPointBuffer()` to hide rows that don't exist there.
   If Forever ever shows Retail-only rows (Moonfire, Predatory Swiftness) or empty icons (e.g. Berserk in
   Config Mode), check `IS_FOREVER` first — Blizzard already changed the project ID once, which silently
@@ -85,8 +84,8 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   argument and is only `SecretArguments="AllowedWhenUntainted"`, so it throws the instant it's called in
   combat (confirmed live: "Secret values are only allowed during untainted execution for this argument").
   `UnitPowerPercent` reads the secret power value and evaluates the curve entirely C-side instead, so the
-  secret number never crosses into Lua as an argument — same pattern as ThreatPlates' `UnitHealthPercent(unit,
-  true, curve)` for health colors (`Elements/StatusText.lua`), not a curve's own `:Evaluate()`. No
+  secret number never crosses into Lua as an argument — same pattern as `UnitHealthPercent(unit,
+  true, curve)` for health colors, not a curve's own `:Evaluate()`. No
   `C_CurveUtil`/`Enum.LuaCurveType` existence guard — confirmed present on both supported clients (Retail
   120100 and Forever 16001, both Midnight-engine; checked in `/bitwdebug`'s API table).
 - Combo point **count** source differs per client: Retail reads `UnitPower("player", 4)` (shared across
@@ -105,8 +104,8 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 - `UNIT_COMBO_POINTS` does not exist on Forever; combo points arrive via `UNIT_POWER_FREQUENT`/
   `UNIT_POWER_UPDATE` (`COMBO_POINTS`), `PLAYER_TARGET_CHANGED` and the `PLAYER_REGEN_*`/shapeshift-driven `OnShapeshift` refresh (the old 0.5s
   `Bar.stateTicker` was removed).
-- SavedVariables not loading on some Forever clients is a known client bug (see ThreatPlates' wiki, fixes
-  #21-#23) — not addon-fixable. Deliberately no workaround here; don't add one.
+- SavedVariables not loading on some Forever clients is a known client bug
+  — not addon-fixable. Deliberately no workaround here; don't add one.
 - The auras really do show up under the Forever IDs listed above (multi-ID `includeSpellIDs` filters, incl.
   in combat) — confirmed in-game.
 - Options tabs (hidden rows: Moonfire, Predatory Swiftness, stack text, overflow buffer, Incarnation text) —
@@ -239,7 +238,7 @@ Registered in `Addon:OnInitialize()`:
 - LSM-registered media from other addons may not exist yet at this addon's own load — re-apply LSM-dependent visuals on `PLAYER_ENTERING_WORLD` too (`Addon:OnPlayerEnteringWorld`).
 - Real `AuraButton`s are secure/pooled: `InitializeAuraButton` runs exactly once per physical button, ever. Live setting changes re-run the same `Set*` calls via `Addon:ReapplyLiveAuraButtonSettings()` (icon size/font/color) — out of combat only, retried from `OnCombatEnded`. Anything not covered there won't update live on existing buttons until `/reload`.
 - `AddPandemicRegion(region)` marks only the region's **Shown** state secret (`AddSecretAspect`) — color/size/blend stay addon-controlled always. Accepts any Region (Frame or Texture).
-- The default `CooldownFrameTemplate` swipe is circular, not square — this is standard WoW behavior for aura/buff icons everywhere (target frame, unit frames, ThreatPlates all do the same), not a bug to fix.
+- The default `CooldownFrameTemplate` swipe is circular, not square — this is standard WoW behavior for aura/buff icons everywhere (target frame, unit frames all do the same), not a bug to fix.
 - The main icon's spell-icon art has a thin border baked into the texture file itself — crop it with `SetTexCoord(0.08, 0.92, 0.08, 0.92)` (see `InitializeAuraButton`/`CreateIconFrame`), otherwise it shows through whenever the cooldown swipe doesn't happen to cover the edge.
 
 ## Conventions

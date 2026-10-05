@@ -138,12 +138,11 @@ function Addon:SetPreviewMode(active)
   self:OnShapeshift()
 end
 
--- "WoW Forever" (Blizzard's Classic-rules client on the modern engine, see
--- ThreatPlates' Init.lua) reported WOW_PROJECT_MAINLINE (1) in its first beta
--- builds and got its own project id with beta patch 1.60.1 (build 70170):
--- WOW_PROJECT_CAMELOT (18, Blizzard's internal name for Forever). The
--- constant is only defined on Forever itself, hence the existence check.
--- Same detection formula as ThreatPlates. Lives on Addon so Options.lua
+-- "WoW Forever" (Blizzard's Classic-rules client on the modern engine)
+-- reported WOW_PROJECT_MAINLINE (1) in its first beta builds and got its own
+-- project id with beta patch 1.60.1 (build 70170): WOW_PROJECT_CAMELOT (18,
+-- Blizzard's internal name for Forever). The constant is only defined on
+-- Forever itself, hence the existence check. Lives on Addon so Options.lua
 -- (separate chunk) can read it too.
 Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT)
 
@@ -336,8 +335,8 @@ end
 -- display path: once an addon calls container:SetUnit(unitToken), Blizzard's
 -- own engine owns aura fetching/filtering/updating internally, so target
 -- debuffs and player buffs update live without any addon-side C_UnitAuras
--- polling. Feature-detected via a template-existence check, matching
--- ThreatPlates' own guard, since there's no dedicated expansion-level flag.
+-- polling. Feature-detected via a template-existence check, since there's no
+-- dedicated expansion-level flag.
 local HasAuraContainers = C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo("CustomAuraContainerTemplate") and true or false
 local AuraContainerSortMethod = _G.AuraContainerSortMethod
 local AuraContainerSortDirection = _G.AuraContainerSortDirection
@@ -691,8 +690,7 @@ end
 local function CreatePandemicGlow(parent, iconSize, db)
   local pandemicGlow
   if db.pandemicStyle == "custom" then
-    -- Plain outset border, modeled on ThreatPlates' own aura border
-    -- (Widgets/AurasWidget.lua CreateAuraFrameIconMode): a BackdropTemplate
+    -- Plain outset border: a BackdropTemplate
     -- frame outset a few px past the icon on all sides with a solid-color
     -- edge — no baked-in texture padding to fight, unlike a decorative
     -- border asset. WHITE8X8 is a plain opaque square, so the edge color
@@ -806,7 +804,7 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
   auraButton.PandemicGlowStyle = db.pandemicStyle
   auraButton:AddPandemicRegion(pandemicGlow)
 
-  -- Same AuraButton tooltip gotcha ThreatPlates hit: SetMouseMotionEnabled
+  -- AuraButton tooltip gotcha: SetMouseMotionEnabled
   -- alone isn't enough, SetTooltipAnchorPoint must be called at least once
   -- or ShowTooltip() gets a nil anchor and nothing ever appears.
   auraButton:SetTooltipAnchorPoint("ANCHOR_RIGHT")
@@ -831,7 +829,7 @@ end
 -- Re-runs InitializeAuraButton's icon-size/font/color Set* calls on every
 -- already-created AuraButton across all 3 aura rows (Debuffs/Proccs/
 -- Cooldowns), so Appearance/color changes take effect immediately instead
--- of needing /reload. Confirmed safe by ThreatPlates' own live testing:
+-- of needing /reload. Safe:
 -- these are plain Set* calls, not aura-data reads, and AuraButton's
 -- AccessRestrictionFlags = DenyTaintedAccessWhenAurasAreSecret only blocks
 -- them while genuinely in combat/secret-aura territory — out of combat
@@ -876,8 +874,8 @@ function Addon:ReapplyLiveAuraButtonSettings()
         end
         if auraButton.PandemicGlow then
           if auraButton.PandemicGlowStyle == "custom" then
-            -- Fixed pixel outset regardless of icon size (matches
-            -- ThreatPlates' own border), so only color follows live.
+            -- Fixed pixel outset regardless of icon size, so only color
+            -- follows live.
             local pc = db.pandemicColor
             if pc then
               auraButton.PandemicGlow:SetBackdropBorderColor(pc[1], pc[2], pc[3], pc[4] or 1)
@@ -1047,9 +1045,8 @@ end
 
 -- Pushes today's DEBUFF_SPELL_IDS / Cat Form + combat / target state into each
 -- debuff slot container. Safe to call live, including mid-combat — these
--- are the same container-level filter/unit setters ThreatPlates calls from
--- plain addon code on every target change (only frame *creation* above is
--- combat-gated).
+-- are container-level filter/unit setters, callable from plain addon code
+-- on every target change (only frame *creation* above is combat-gated).
 function Addon:UpdateDebuffContainerFilters()
   if not HasAuraContainers or not Bar.debuffContainers then return end
 
@@ -1548,7 +1545,7 @@ end
 -------------------------------------------------------------------------------
 
 -- Own addon-owned frames, entirely separate from the real AuraContainers —
--- per ThreatPlates' own Midnight research, AuraContainer/AuraButton has no
+-- AuraContainer/AuraButton has no
 -- demo/preview mechanism at all (it only ever shows real data for a real
 -- SetUnit() token), so faking it means bypassing AuraContainer completely
 -- and reusing the same plain Frame+Texture+Cooldown pattern instead. Created
@@ -1930,9 +1927,8 @@ end
 -- curve) (UnitDocumentation.lua) instead reads the (possibly secret) power
 -- value AND evaluates the curve entirely C-side — the secret number never
 -- crosses into Lua as an argument, so the AllowedWhenUntainted restriction
--- never triggers. Same pattern ThreatPlates uses for health
--- (UnitHealthPercent(unit, true, curve), Elements/StatusText.lua) instead of
--- calling a health color curve's :Evaluate() directly.
+-- never triggers. Same pattern as UnitHealthPercent(unit, true, curve) for
+-- health colors, instead of calling a color curve's :Evaluate() directly.
 --
 -- Used on both clients (see RefreshComboPoints) - it evaluates the color
 -- from UnitPower("player", 4) via a C-side sink regardless of which API cp
@@ -1966,7 +1962,7 @@ end
 -- real target switches in combat. GetComboPoints("player", "target") reads
 -- the new target's count correctly, so Forever reads combo points from it;
 -- Retail keeps UnitPower (shared across targets by design since patch
--- 6.0.2, see ThreatPlates' ComboPointsWidget.lua).
+-- 6.0.2).
 local function RefreshComboPoints()
   if not Bar or not Bar:IsShown() then return end
   if not Bar.cpText then return end
@@ -2426,8 +2422,8 @@ end
 -- /bitwdebug: WoW Forever compatibility check
 -------------------------------------------------------------------------------
 
--- Static section 1: which client is this (the raw signals ThreatPlates' own
--- IS_FOREVER detection is built from).
+-- Static section 1: which client is this (the raw client signals, plus the
+-- resulting IS_FOREVER).
 local function ReportClient()
   DbgHeader("Client")
   local version, build, _, interface = GetBuildInfo()
@@ -2435,7 +2431,7 @@ local function ReportClient()
   DbgInfo("WOW_PROJECT_ID", tostring(WOW_PROJECT_ID) .. " (MAINLINE=" .. tostring(WOW_PROJECT_MAINLINE) .. ", CLASSIC=" .. tostring(WOW_PROJECT_CLASSIC) .. ", CAMELOT=" .. tostring(WOW_PROJECT_CAMELOT) .. ")")
   DbgInfo("GetClassicExpansionLevel()", expansionLevel)
   DbgInfo("GetBuildInfo()", string.format("version=%s build=%s interface=%s", tostring(version), tostring(build), tostring(interface)))
-  DbgInfo("Addon.IS_FOREVER (ThreatPlates formula) - spell set in use", tostring(Addon.IS_FOREVER) .. " - " .. (Addon.IS_FOREVER and "FOREVER" or "RETAIL"))
+  DbgInfo("Addon.IS_FOREVER - spell set in use", tostring(Addon.IS_FOREVER) .. " - " .. (Addon.IS_FOREVER and "FOREVER" or "RETAIL"))
   DbgInfo("Class / combat lockdown", tostring(select(2, UnitClass("player"))) .. " / " .. tostring(InCombatLockdown()))
 end
 
