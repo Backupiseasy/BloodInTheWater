@@ -2,7 +2,7 @@
 
 ## What this is
 
-WoW AddOn (Retail `## Interface: 120100` + WoW Forever `16001`, see "WoW Forever" below). Druid-only, Cat Form-only energy
+WoW AddOn (Retail `## Interface: 120105` + WoW Forever `16001`, see "WoW Forever" below). Druid-only, Cat Form-only energy
 bar with combo points, target-debuff/player-buff/cooldown-buff icon rows.
 Everything is an addon-owned frame or Blizzard's `AuraContainer`/`AuraButton`
 API — never Blizzard's own Cooldown Manager (CDM) frames. Config via `/bitw`.
@@ -43,7 +43,7 @@ registered (e.g. the SharedMedia addon that provided it got disabled). A new
 bundled asset needs an LSM registration **and** a fallback constant.
 
 `Libs/` is git-ignored (except `embeds.xml`); the packager fills it from the
-`externals:` in `.pkgmeta` (short form = trunk HEAD, like ThreatPlates). For
+`externals:` in `.pkgmeta` (short form = trunk HEAD). For
 local in-game testing, `Libs/` must be filled by hand from the same sources —
 adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 
@@ -54,13 +54,16 @@ adding a lib means updating both `.pkgmeta` and `Libs/embeds.xml`.
 first beta builds, changed with beta patch 1.60.1 / build 70170 — the constant exists only on Forever, so
 check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Interface `16001`
 (in the TOC's Interface line next to Retail's), and has AuraContainers, secret values, `C_Spell`,
-`C_UnitAuras`. Background and the full list of pitfalls: the ThreatPlates repo's
-`Source/Wiki/wow-forever-compatibility.md`.
+`C_UnitAuras`.
 
 **Implemented**
 
-- `Addon.IS_FOREVER` (same formula as ThreatPlates' `Init.lua`) picks the spell set. `Options.lua` reads it
+- `Addon.IS_FOREVER` (`WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT`) picks the spell set. `Options.lua` reads it
   plus `Addon:IsSlotUsed(row, i)` / `Addon:HasComboPointBuffer()` to hide rows that don't exist there.
+  If Forever ever shows Retail-only rows (Moonfire, Predatory Swiftness) or empty icons (e.g. Berserk in
+  Config Mode), check `IS_FOREVER` first — Blizzard already changed the project ID once, which silently
+  switched the whole addon to the Retail spell set:
+  `/run print(LibStub("AceAddon-3.0"):GetAddon("BloodInTheWater").IS_FOREVER, WOW_PROJECT_ID)`.
 - Spell IDs live in `SPELL_SETS` (`RETAIL` / `FOREVER`); each slot is a **list** of aura IDs because every
   Classic rank of Rake/Rip has its own ID. An empty list = unused slot (container/preview disabled, Options
   row hidden). `DEBUFF_SPELL_SETS` etc. are the precomputed `includeSpellIDs` sets.
@@ -81,8 +84,8 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   argument and is only `SecretArguments="AllowedWhenUntainted"`, so it throws the instant it's called in
   combat (confirmed live: "Secret values are only allowed during untainted execution for this argument").
   `UnitPowerPercent` reads the secret power value and evaluates the curve entirely C-side instead, so the
-  secret number never crosses into Lua as an argument — same pattern as ThreatPlates' `UnitHealthPercent(unit,
-  true, curve)` for health colors (`Elements/StatusText.lua`), not a curve's own `:Evaluate()`. No
+  secret number never crosses into Lua as an argument — same pattern as `UnitHealthPercent(unit,
+  true, curve)` for health colors, not a curve's own `:Evaluate()`. No
   `C_CurveUtil`/`Enum.LuaCurveType` existence guard — confirmed present on both supported clients (Retail
   120100 and Forever 16001, both Midnight-engine; checked in `/bitwdebug`'s API table).
 - Combo point **count** source differs per client: Retail reads `UnitPower("player", 4)` (shared across
@@ -98,11 +101,15 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   `UNIT_POWER_FREQUENT` — both are registered, same handler (`OnPowerUpdate`).
 - `GetShapeshiftFormID() == 1` (`CAT_FORM_ID`) is Cat Form on Forever too — confirmed in-game in Cat Form.
 - Config Mode (preview with unused slots) works on Forever — confirmed in-game.
+- Forever has the 12.1.5-era APIs this addon feature-detects: `AuraButton:AddAuraShownAnimation` (the proc burst
+  plays on Clearcasting), the `UI-HUD-ActionBar-Proc-Start-Flipbook` atlas and `Region:SetRoundLayoutToNearestPixel`
+  — all confirmed in-game, no Lua errors. `CustomAuraButtonSharedMixin` is **not** visible to addon code via `_G`
+  (prints nil), so a `/run` check on it says nothing about the API — test on a real button/proc instead.
 - `UNIT_COMBO_POINTS` does not exist on Forever; combo points arrive via `UNIT_POWER_FREQUENT`/
   `UNIT_POWER_UPDATE` (`COMBO_POINTS`), `PLAYER_TARGET_CHANGED` and the `PLAYER_REGEN_*`/shapeshift-driven `OnShapeshift` refresh (the old 0.5s
   `Bar.stateTicker` was removed).
-- SavedVariables not loading on some Forever clients is a known client bug (see ThreatPlates' wiki, fixes
-  #21-#23) — not addon-fixable. Deliberately no workaround here; don't add one.
+- SavedVariables not loading on some Forever clients is a known client bug
+  — not addon-fixable. Deliberately no workaround here; don't add one.
 - The auras really do show up under the Forever IDs listed above (multi-ID `includeSpellIDs` filters, incl.
   in combat) — confirmed in-game.
 - Options tabs (hidden rows: Moonfire, Predatory Swiftness, stack text, overflow buffer, Incarnation text) —
@@ -124,12 +131,13 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer — hidden on Forever)
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
 4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
-5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, stack-count text position (Predatory Swiftness and stack text hidden on Forever)
+5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, Proc Animation toggle (12.1.5+ `AddAuraShownAnimation`), stack-count text position (Predatory Swiftness and stack text hidden on Forever)
 6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury, Berserk/Incarnation sharing one slot since the talents are mutually exclusive; no Incarnation on Forever)
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
    character starts on the shared `"Default"` profile; all profiles are available to all characters.
 
-Plus a "Toggle Config Mode" execute button at the top (order 0).
+Plus a Config Mode execute button at the top (order 0); its label switches between "Enable Config Mode"
+and "Disable Config Mode".
 
 When adding a row of options that needs a guaranteed line break, use
 `GetSpacerEntry(order)` (invisible `width="full"` filler) as the last widget
@@ -229,12 +237,26 @@ Registered in `Addon:OnInitialize()`:
 - `BackdropTemplateMixin:SetBackdrop` doesn't reliably recompute a live-shown border in place — `SetBackdrop(nil)` then rebuild the full table on every change (see `Addon:ApplyBarAppearance()`). Don't "fix" a stuck border via `Hide()`/`Show()` toggling — caused a runaway recursive layout loop (OOM crash) once.
 - **`backdropInfo.insets` only ever repositions the backdrop's own "Center" bg region, and only when `bgFile` is set** — confirmed by reading `Blizzard_SharedXML/Backdrop.lua`'s `ApplyBackdrop` directly (`if self.backdropInfo.bgFile then` gates the entire inset calculation; the edge/corner pieces are never affected by insets at all). Neither bar's border ever sets `bgFile` (a separate addon-owned texture is used instead), so passing `db.*BorderInset` through `SetBackdrop`'s `insets` table did literally nothing — the "Border Position (Inset)" option had no effect, at any value, confirmed in-game. Fixed by dropping `insets` from both `SetBackdrop` calls entirely and instead resizing/repositioning a dedicated border frame around the bar: the energy bar's border now lives on its own `Bar.bg.border` frame (parented to `Bar.bg` so Show/Hide cascades), separate from `Bar.bg` itself, which stays a fixed size exactly matching `Bar` and carries only the Bar Background Color panel (`Bar.bg.bgTex`) — sharing one frame for both border and background panel made the background panel grow/shrink with the inset too, confirmed in-game. The cooldown-buff bars already had this separation (`auraButton.BarBg` always `SetAllPoints(bar)`, independent of `auraButton.BarBorder`); only `LayoutCooldownBuffBar` needed a new `inset` parameter, plus matching creation/live-reapply changes for the Config Mode preview frame.
 - **`math.floor`/similar Lua-side arithmetic on a value from `UnitPower`/aura data is unsafe even outside combat and even on the player's own non-aura power number** — confirmed in-game: `AceDB`'s `ResetProfile` fires `OnProfileRefresh` → `UpdateBar` through a call chain crossing other addons' own embedded Ace3 libraries (seen in the traceback: `BetterBags/libs/AceDB-3.0`, `AdvancedInterfaceOptions/.../AceConfigDialog-3.0`), which left execution secret-tainted and made `UnitPower("player", 3)` return a secret number well outside of combat and with no aura involved at all — "attempt to perform numeric conversion on a secret number value" from `math.floor`. `SetValue`/`SetText` both accept a secret number fine as C-side sinks; only reading/converting it in Lua is the problem. `UpdateBar`/`RefreshValue` now only ever floor the plain Config Mode half-max dummy value, passing the real value straight through unmodified.
-- **Never call `SomeFrame:SetBackdrop({...})` (a full rebuild, not just `SetBackdropBorderColor`) on a plain frame from inside the same function call that also touches a real secure `AuraButton`'s own Set* methods** (e.g. `PixelUtil.SetSize(auraButton, ...)`) — confirmed in-game, reproduced twice: `Blizzard_SharedXML/Backdrop.lua: attempt to perform arithmetic on local 'width' (a secret number value, while execution tainted by 'BloodInTheWater')`, thrown from `ApplyCooldownBuffBarBorder`'s `SetBackdrop` call inside `ReapplyLiveAuraButtonSettings`'s per-button loop. Switching the plain frame to an explicit `SetSize` + single anchor point (instead of two-opposite-corner anchoring to a `SecretAspect`-bearing frame) did **not** fix it — the real cause isn't the frame's own anchoring, it's that touching the secure `auraButton` earlier in the same Lua call taints the rest of that call's execution, and Blizzard's backdrop code then defensively treats *any* frame's width it reads as secret, regardless of whose frame it is. `CreatePandemicGlow`'s "custom" style already had the actual safe pattern: a full `SetBackdrop` only once, at creation, inside `InitializeAuraButton`'s own `securecallfunction` wrapper; every live reapply after that only calls `SetBackdropBorderColor` (color never needs the width-computing codepath). `ReapplyLiveAuraButtonSettings`'s cooldown-buff-bar border reapply follows the same rule now — Border Texture/Size/Inset changes only reach already-pooled buttons after `/reload`; only Border Color applies live.
+- **Never call `SomeFrame:SetBackdrop({...})` (a full rebuild, not just `SetBackdropBorderColor`) on a plain frame from inside the same function call that also touches a real secure `AuraButton`'s own Set* methods** (e.g. `SetPixelSnappedSize(auraButton, ...)`, formerly `PixelUtil.SetSize`) — confirmed in-game, reproduced twice: `Blizzard_SharedXML/Backdrop.lua: attempt to perform arithmetic on local 'width' (a secret number value, while execution tainted by 'BloodInTheWater')`, thrown from `ApplyCooldownBuffBarBorder`'s `SetBackdrop` call inside `ReapplyLiveAuraButtonSettings`'s per-button loop. Switching the plain frame to an explicit `SetSize` + single anchor point (instead of two-opposite-corner anchoring to a `SecretAspect`-bearing frame) did **not** fix it — the real cause isn't the frame's own anchoring, it's that touching the secure `auraButton` earlier in the same Lua call taints the rest of that call's execution, and Blizzard's backdrop code then defensively treats *any* frame's width it reads as secret, regardless of whose frame it is. `CreatePandemicGlow`'s "custom" style already had the actual safe pattern: a full `SetBackdrop` only once, at creation, inside `InitializeAuraButton`'s own `securecallfunction` wrapper; every live reapply after that only calls `SetBackdropBorderColor` (color never needs the width-computing codepath). `ReapplyLiveAuraButtonSettings`'s cooldown-buff-bar border reapply follows the same rule now — Border Texture/Size/Inset changes only reach already-pooled buttons after `/reload`; only Border Color applies live.
 - A freshly (re)built backdrop's border can settle back to full alpha a frame after `SetBackdrop` returns — reapply `SetBackdropBorderColor` once more via `C_Timer.After(0, ...)` to win that race (see `ApplyBarAppearance`).
 - LSM-registered media from other addons may not exist yet at this addon's own load — re-apply LSM-dependent visuals on `PLAYER_ENTERING_WORLD` too (`Addon:OnPlayerEnteringWorld`).
+- AuraButton sizing goes through `SetPixelSnappedSize` (native `SetRoundLayoutToNearestPixel(true)` + `SetSize`,
+  `PixelUtil.SetSize` fallback — PixelUtil is deprecated since 12.1.5). Never read `GetRoundLayoutToNearestPixel()` on
+  an AuraButton: it returns a secret boolean to this addon's tainted execution and the `if` throws — confirmed in-game.
+  The setter is just called unconditionally every time.
+- AuraButton animation triggers (12.1.5+, `AddPandemicActiveAnimation` for the WoW Border glow, `AddAuraShownAnimation`
+  for the proc burst): the group's parent and every animation's target must be the button or a descendant (set
+  `SetTarget` explicitly). After the hand-over the group is locked (no `CreateAnimation`/`IsPlaying`, no target change,
+  no reliable `OnFinished` chaining) and the targets' Alpha/VertexColor/TexCoords become secret — so build everything
+  first, and toggle an option by changing the animation's own values (e.g. alpha steps pinned to 0 = no-op), never by
+  removing it. Feature-detect the method.
+- The proc burst (`CreateProcBurst`) rebuilds the first half of Blizzard's action-bar spell alert
+  (`ActionButtonSpellAlertTemplate`, `Blizzard_ActionBar/Shared/ActionButtonSpellAlerts.xml`): the one-shot flipbook
+  `UI-HUD-ActionBar-Proc-Start-Flipbook` (0.7s). Blizzard's follow-up looping glow (`UI-HUD-ActionBar-Proc-Loop-Flipbook`)
+  was built and tested, then dropped as too eye-catching. No Config Mode preview (a one-shot has no static look).
 - Real `AuraButton`s are secure/pooled: `InitializeAuraButton` runs exactly once per physical button, ever. Live setting changes re-run the same `Set*` calls via `Addon:ReapplyLiveAuraButtonSettings()` (icon size/font/color) — out of combat only, retried from `OnCombatEnded`. Anything not covered there won't update live on existing buttons until `/reload`.
 - `AddPandemicRegion(region)` marks only the region's **Shown** state secret (`AddSecretAspect`) — color/size/blend stay addon-controlled always. Accepts any Region (Frame or Texture).
-- The default `CooldownFrameTemplate` swipe is circular, not square — this is standard WoW behavior for aura/buff icons everywhere (target frame, unit frames, ThreatPlates all do the same), not a bug to fix.
+- The default `CooldownFrameTemplate` swipe is circular, not square — this is standard WoW behavior for aura/buff icons everywhere (target frame, unit frames all do the same), not a bug to fix.
 - The main icon's spell-icon art has a thin border baked into the texture file itself — crop it with `SetTexCoord(0.08, 0.92, 0.08, 0.92)` (see `InitializeAuraButton`/`CreateIconFrame`), otherwise it shows through whenever the cooldown swipe doesn't happen to cover the edge.
 
 ## Conventions

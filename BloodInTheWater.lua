@@ -74,6 +74,7 @@ local Defaults = {
     buffNormalColor = {1, 1, 1, 1}, -- countdown text color
     buffStacksPosX = 4,  -- stack-count text offset from icon BOTTOMRIGHT (px)
     buffStacksPosY = -8,
+    buffProcAnimation = true, -- Blizzard's action-bar proc burst on the proc icons (12.1.5+)
     -- Cooldown-buff icons (Tiger's Fury/Berserk/Incarnation by default,
     -- hardcoded — see COOLDOWN_BUFF_SPELL_IDS). Stays one positioned unit
     -- with a Spacing value (stacked vertically), unlike Debuffs/Buffs above
@@ -138,12 +139,11 @@ function Addon:SetPreviewMode(active)
   self:OnShapeshift()
 end
 
--- "WoW Forever" (Blizzard's Classic-rules client on the modern engine, see
--- ThreatPlates' Init.lua) reported WOW_PROJECT_MAINLINE (1) in its first beta
--- builds and got its own project id with beta patch 1.60.1 (build 70170):
--- WOW_PROJECT_CAMELOT (18, Blizzard's internal name for Forever). The
--- constant is only defined on Forever itself, hence the existence check.
--- Same detection formula as ThreatPlates. Lives on Addon so Options.lua
+-- "WoW Forever" (Blizzard's Classic-rules client on the modern engine)
+-- reported WOW_PROJECT_MAINLINE (1) in its first beta builds and got its own
+-- project id with beta patch 1.60.1 (build 70170): WOW_PROJECT_CAMELOT (18,
+-- Blizzard's internal name for Forever). The constant is only defined on
+-- Forever itself, hence the existence check. Lives on Addon so Options.lua
 -- (separate chunk) can read it too.
 Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT)
 
@@ -336,8 +336,8 @@ end
 -- display path: once an addon calls container:SetUnit(unitToken), Blizzard's
 -- own engine owns aura fetching/filtering/updating internally, so target
 -- debuffs and player buffs update live without any addon-side C_UnitAuras
--- polling. Feature-detected via a template-existence check, matching
--- ThreatPlates' own guard, since there's no dedicated expansion-level flag.
+-- polling. Feature-detected via a template-existence check, since there's no
+-- dedicated expansion-level flag.
 local HasAuraContainers = C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo("CustomAuraContainerTemplate") and true or false
 local AuraContainerSortMethod = _G.AuraContainerSortMethod
 local AuraContainerSortDirection = _G.AuraContainerSortDirection
@@ -688,11 +688,12 @@ end
 -- shared by InitializeAuraButton (real, secret-Shown-managed AuraButtons)
 -- and the Config Mode Rake preview frame (plain, addon-owned, always-shown
 -- while previewing). See the two branches below for the per-style detail.
-local function CreatePandemicGlow(parent, iconSize, db)
+-- auraButton is only passed for a real AuraButton (parent == auraButton) —
+-- it decides who plays the WoW Border flipbook, see the end of that branch.
+local function CreatePandemicGlow(parent, iconSize, db, auraButton)
   local pandemicGlow
   if db.pandemicStyle == "custom" then
-    -- Plain outset border, modeled on ThreatPlates' own aura border
-    -- (Widgets/AurasWidget.lua CreateAuraFrameIconMode): a BackdropTemplate
+    -- Plain outset border: a BackdropTemplate
     -- frame outset a few px past the icon on all sides with a solid-color
     -- edge — no baked-in texture padding to fight, unlike a decorative
     -- border asset. WHITE8X8 is a plain opaque square, so the edge color
@@ -729,6 +730,9 @@ local function CreatePandemicGlow(parent, iconSize, db)
     local pandemicGlowAnim = pandemicGlow:CreateAnimationGroup()
     pandemicGlowAnim:SetLooping("REPEAT")
     local pandemicGlowFlipBook = pandemicGlowAnim:CreateAnimation("FlipBook")
+    -- Explicit target: AddPandemicActiveAnimation validates every
+    -- animation's GetTarget() as the button or one of its descendants.
+    pandemicGlowFlipBook:SetTarget(pandemicGlow)
     pandemicGlowFlipBook:SetDuration(1)
     pandemicGlowFlipBook:SetOrder(0)
     pandemicGlowFlipBook:SetFlipBookRows(6)
@@ -736,9 +740,129 @@ local function CreatePandemicGlow(parent, iconSize, db)
     pandemicGlowFlipBook:SetFlipBookFrames(30)
     pandemicGlowFlipBook:SetFlipBookFrameWidth(0)
     pandemicGlowFlipBook:SetFlipBookFrameHeight(0)
-    pandemicGlowAnim:Play()
+
+    -- Patch 12.1.5+: Blizzard plays a pandemic "active" animation for
+    -- exactly the window and stops it on leaving, so the flipbook no longer
+    -- runs permanently on every (mostly hidden) debuff button. Handing it
+    -- over locks the group (no more CreateAnimation/IsPlaying, no target
+    -- change) and makes the glow's Alpha/VertexColor/TexCoords secret —
+    -- everything above is set up beforehand, and live updates only ever call
+    -- SetSize on it. Preview frames and older clients just loop it forever,
+    -- as before.
+    if auraButton and auraButton.AddPandemicActiveAnimation then
+      auraButton:AddPandemicActiveAnimation(pandemicGlowAnim)
+    else
+      pandemicGlowAnim:Play()
+    end
   end
   return pandemicGlow
+end
+
+-- Sizes an AuraButton snapped to whole physical pixels. Patch 12.1.5
+-- deprecated PixelUtil.SetSize/SetWidth/SetHeight/SetPoint ("will be removed
+-- in the future") in favor of the native Region:SetRoundLayoutToNearestPixel,
+-- which makes the engine round every later SetSize/SetPoint itself — no
+-- Lua-side GetEffectiveScale arithmetic in this addon's (tainted) execution.
+-- Feature-detected: clients without it (12.1.0, possibly WoW Forever) keep
+-- the PixelUtil path. Set unconditionally on every call, never guarded by
+-- GetRoundLayoutToNearestPixel: on a real AuraButton that getter returns a
+-- secret boolean to this addon's tainted execution — confirmed in-game,
+-- "attempt to perform boolean test on a secret boolean value" from
+-- ReapplyLiveAuraButtonSettings at combat end.
+local function SetPixelSnappedSize(region, width, height)
+  if region.SetRoundLayoutToNearestPixel then
+    region:SetRoundLayoutToNearestPixel(true)
+    region:SetSize(width, height)
+  else
+    PixelUtil.SetSize(region, width, height)
+  end
+end
+
+-- Proc burst (Proccs row): the one-shot "burst" of Blizzard's action-bar
+-- spell alert (ActionButtonSpellAlertTemplate, Blizzard_ActionBar/Shared/
+-- ActionButtonSpellAlerts.xml/.lua), played when a proc appears. Blizzard's
+-- follow-up looping glow is deliberately left out (too eye-catching here).
+-- Blizzard draws the burst at a fixed 150px on a 45px action button (3.33x);
+-- its icon sits inset within the button, ours fills it, so the ratio is
+-- scaled up by the same ~1.16 the Pandemic WoW Border needed (1.4667x ->
+-- 1.7x, see CreatePandemicGlow).
+local PROC_BURST_SCALE = 3.9
+local PROC_BURST_DURATION = 0.7 -- Blizzard's ProcStartAnim flipbook
+-- The flipbook's last frames shrink into the square ring the (omitted) loop
+-- glow continues from — on its own that ring just looks odd, so the burst
+-- fades out early and the flipbook's remainder plays invisibly. Tuned
+-- in-game: a fade over the whole second half (0.35s + 0.35s) still left
+-- the ring faintly visible.
+local PROC_BURST_FADE_START = 0.2
+local PROC_BURST_FADE_DURATION = 0.2
+
+local function LayoutProcBurst(procBurst, iconSize)
+  procBurst:SetSize(iconSize, iconSize)
+  procBurst.Texture:SetSize(iconSize * PROC_BURST_SCALE, iconSize * PROC_BURST_SCALE)
+end
+
+-- Builds the burst on parent (a plain child frame centered on it, so it
+-- draws above the parent's own regions). Mirrors Blizzard's ProcStartAnim:
+-- instant alpha 1, the 30-frame flipbook, instant alpha 0, final alpha kept.
+-- Returns the frame; procBurst.Anim is the group to play.
+local function CreateProcBurst(parent, iconSize)
+  local procBurst = CreateFrame("Frame", nil, parent)
+  procBurst:SetPoint("CENTER", parent, "CENTER")
+
+  local texture = procBurst:CreateTexture(nil, "ARTWORK")
+  texture:SetAtlas("UI-HUD-ActionBar-Proc-Start-Flipbook")
+  texture:SetPoint("CENTER", procBurst, "CENTER")
+  texture:SetAlpha(0)
+  procBurst.Texture = texture
+
+  -- Instant alpha step, same .001s trick Blizzard's template uses.
+  local function AddAlphaStep(group, order)
+    local alpha = group:CreateAnimation("Alpha")
+    alpha:SetTarget(texture)
+    alpha:SetOrder(order)
+    alpha:SetDuration(0.001)
+    return alpha
+  end
+
+  local anim = procBurst:CreateAnimationGroup()
+  anim:SetToFinalAlpha(true)
+  procBurst.ShowStep = AddAlphaStep(anim, 1)
+  local flipBook = anim:CreateAnimation("FlipBook")
+  flipBook:SetTarget(texture)
+  flipBook:SetOrder(2)
+  flipBook:SetDuration(PROC_BURST_DURATION)
+  flipBook:SetFlipBookRows(6)
+  flipBook:SetFlipBookColumns(5)
+  flipBook:SetFlipBookFrames(30)
+  flipBook:SetFlipBookFrameWidth(0)
+  flipBook:SetFlipBookFrameHeight(0)
+  -- Runs alongside the flipbook (same order), see PROC_BURST_FADE_START.
+  local fadeOut = anim:CreateAnimation("Alpha")
+  fadeOut:SetTarget(texture)
+  fadeOut:SetOrder(2)
+  fadeOut:SetStartDelay(PROC_BURST_FADE_START)
+  fadeOut:SetDuration(PROC_BURST_FADE_DURATION)
+  procBurst.FadeOut = fadeOut
+  procBurst.HideStep = AddAlphaStep(anim, 3)
+
+  procBurst.Anim = anim
+  LayoutProcBurst(procBurst, iconSize)
+  return procBurst
+end
+
+-- Turns the proc burst on or off. Once handed to AddAuraShownAnimation the
+-- group can't be removed or queried anymore, so "off" just pins its alpha
+-- steps to 0 — the animation still plays, invisibly. Shared by
+-- InitializeAuraButton and ReapplyLiveAuraButtonSettings, so out of combat
+-- only for existing buttons.
+local function ApplyProcBurstSettings(procBurst, enabled)
+  local alpha = enabled and 1 or 0
+  procBurst.ShowStep:SetFromAlpha(alpha)
+  procBurst.ShowStep:SetToAlpha(alpha)
+  procBurst.FadeOut:SetFromAlpha(alpha)
+  procBurst.FadeOut:SetToAlpha(0)
+  procBurst.HideStep:SetFromAlpha(0)
+  procBurst.HideStep:SetToAlpha(0)
 end
 
 -- Configures one AuraButton's visuals: icon, cooldown swipe + countdown
@@ -761,7 +885,7 @@ end
 -- Stacks/stackText parented to Cooldown for the same z-order reason. The
 -- two are separate implementations (secure AuraButton vs. plain Frame)
 -- kept manually in sync; a change to one's visuals usually belongs on both.
-local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
+local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY, withProcBurst)
   local db = Addon.db.profile
   local iconSize = db.appearanceIconSize
 
@@ -801,19 +925,19 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
   -- InitializeAuraButton itself, this runs once per pooled button, so
   -- switching db.pandemicStyle only takes effect for buttons created after
   -- the change (existing ones need a /reload).
-  local pandemicGlow = CreatePandemicGlow(auraButton, iconSize, db)
+  local pandemicGlow = CreatePandemicGlow(auraButton, iconSize, db, auraButton)
   auraButton.PandemicGlow = pandemicGlow
   auraButton.PandemicGlowStyle = db.pandemicStyle
   auraButton:AddPandemicRegion(pandemicGlow)
 
-  -- Same AuraButton tooltip gotcha ThreatPlates hit: SetMouseMotionEnabled
+  -- AuraButton tooltip gotcha: SetMouseMotionEnabled
   -- alone isn't enough, SetTooltipAnchorPoint must be called at least once
   -- or ShowTooltip() gets a nil anchor and nothing ever appears.
   auraButton:SetTooltipAnchorPoint("ANCHOR_RIGHT")
   auraButton:SetMouseMotionEnabled(true)
   auraButton:SetHideTooltipInCombat(false)
 
-  PixelUtil.SetSize(auraButton, iconSize, iconSize)
+  SetPixelSnappedSize(auraButton, iconSize, iconSize)
 
   local fontPath = GetAppearanceFontPath(db.appearanceFont)
   local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
@@ -826,12 +950,29 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
     end
   end
   auraButton.Stacks:SetFont(fontPath, fontSize, "")
+
+  -- Proc burst (Proccs row only), Patch 12.1.5+: Blizzard plays the group
+  -- every time the button turns visible (AddAuraShownAnimation) — i.e. when
+  -- the proc appears. Parented to Cooldown so it draws above the swipe, like
+  -- Blizzard's alert sits above the action button; group, animations and
+  -- target are all descendants of the button, as the hand-over requires.
+  -- After it the group is locked and the texture's Alpha/VertexColor/
+  -- TexCoords become secret — everything is set up beforehand, and live
+  -- updates only ever call SetSize and the animation's own alpha values.
+  -- Feature-detected: older clients just get no burst (and the option does
+  -- nothing there).
+  if withProcBurst and auraButton.AddAuraShownAnimation then
+    local procBurst = CreateProcBurst(auraButton.Cooldown, iconSize)
+    ApplyProcBurstSettings(procBurst, db.buffProcAnimation)
+    auraButton.ProcBurst = procBurst
+    auraButton:AddAuraShownAnimation(procBurst.Anim)
+  end
 end
 
 -- Re-runs InitializeAuraButton's icon-size/font/color Set* calls on every
 -- already-created AuraButton across all 3 aura rows (Debuffs/Proccs/
 -- Cooldowns), so Appearance/color changes take effect immediately instead
--- of needing /reload. Confirmed safe by ThreatPlates' own live testing:
+-- of needing /reload. Safe:
 -- these are plain Set* calls, not aura-data reads, and AuraButton's
 -- AccessRestrictionFlags = DenyTaintedAccessWhenAurasAreSecret only blocks
 -- them while genuinely in combat/secret-aura territory — out of combat
@@ -859,7 +1000,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
     for i = 1, container:GetAuraGroupFrameCount("main") do
       local auraButton = container:GetAuraGroupFrame("main", i)
       if auraButton then
-        PixelUtil.SetSize(auraButton, iconSize, iconSize)
+        SetPixelSnappedSize(auraButton, iconSize, iconSize)
         local fs = auraButton.Cooldown and auraButton.Cooldown:GetCountdownFontString()
         if fs then
           fs:SetFont(fontPath, fontSize, "")
@@ -874,10 +1015,15 @@ function Addon:ReapplyLiveAuraButtonSettings()
             auraButton.Stacks:SetPoint("BOTTOMRIGHT", stacksX, stacksY or -2)
           end
         end
+        -- Proc burst size + on/off (Proccs row only, nil elsewhere).
+        if auraButton.ProcBurst then
+          LayoutProcBurst(auraButton.ProcBurst, iconSize)
+          ApplyProcBurstSettings(auraButton.ProcBurst, db.buffProcAnimation)
+        end
         if auraButton.PandemicGlow then
           if auraButton.PandemicGlowStyle == "custom" then
-            -- Fixed pixel outset regardless of icon size (matches
-            -- ThreatPlates' own border), so only color follows live.
+            -- Fixed pixel outset regardless of icon size, so only color
+            -- follows live.
             local pc = db.pandemicColor
             if pc then
               auraButton.PandemicGlow:SetBackdropBorderColor(pc[1], pc[2], pc[3], pc[4] or 1)
@@ -904,7 +1050,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
           if auraButton.BarBorder then
             -- Color only here, never a full SetBackdrop rebuild — confirmed
             -- in-game that rebuilding the backdrop (ApplyCooldownBuffBarBorder)
-            -- from inside this same loop, right after the PixelUtil.SetSize
+            -- from inside this same loop, right after the SetPixelSnappedSize
             -- call above on the real secure auraButton, throws "attempt to
             -- perform arithmetic on local 'width' (a secret number value,
             -- while execution tainted by 'BloodInTheWater')" from Blizzard's
@@ -1047,9 +1193,8 @@ end
 
 -- Pushes today's DEBUFF_SPELL_IDS / Cat Form + combat / target state into each
 -- debuff slot container. Safe to call live, including mid-combat — these
--- are the same container-level filter/unit setters ThreatPlates calls from
--- plain addon code on every target change (only frame *creation* above is
--- combat-gated).
+-- are container-level filter/unit setters, callable from plain addon code
+-- on every target change (only frame *creation* above is combat-gated).
 function Addon:UpdateDebuffContainerFilters()
   if not HasAuraContainers or not Bar.debuffContainers then return end
 
@@ -1115,7 +1260,7 @@ function Addon:CreateBuffAuraContainers()
     local container = CreateFrame("AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
     container:AddAuraGroup("main", "HELPFUL", {
       initializeFrame = function(auraButton)
-        InitializeAuraButton(auraButton, db.buffNormalColor, db.buffStacksPosX, db.buffStacksPosY)
+        InitializeAuraButton(auraButton, db.buffNormalColor, db.buffStacksPosX, db.buffStacksPosY, true)
       end,
       sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Default,
       sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal,
@@ -1548,7 +1693,7 @@ end
 -------------------------------------------------------------------------------
 
 -- Own addon-owned frames, entirely separate from the real AuraContainers —
--- per ThreatPlates' own Midnight research, AuraContainer/AuraButton has no
+-- AuraContainer/AuraButton has no
 -- demo/preview mechanism at all (it only ever shows real data for a real
 -- SetUnit() token), so faking it means bypassing AuraContainer completely
 -- and reusing the same plain Frame+Texture+Cooldown pattern instead. Created
@@ -1624,6 +1769,7 @@ function Addon:ReapplyPandemicPreviewGlowSettings()
     glow:SetSize(size * 1.7, size * 1.7)
   end
 end
+
 
 -- Positions the preview frames at exactly the same coordinates as the real
 -- debuff/buff slot containers / cooldown-buff column, using the identical
@@ -1930,9 +2076,8 @@ end
 -- curve) (UnitDocumentation.lua) instead reads the (possibly secret) power
 -- value AND evaluates the curve entirely C-side — the secret number never
 -- crosses into Lua as an argument, so the AllowedWhenUntainted restriction
--- never triggers. Same pattern ThreatPlates uses for health
--- (UnitHealthPercent(unit, true, curve), Elements/StatusText.lua) instead of
--- calling a health color curve's :Evaluate() directly.
+-- never triggers. Same pattern as UnitHealthPercent(unit, true, curve) for
+-- health colors, instead of calling a color curve's :Evaluate() directly.
 --
 -- Used on both clients (see RefreshComboPoints) - it evaluates the color
 -- from UnitPower("player", 4) via a C-side sink regardless of which API cp
@@ -1966,7 +2111,7 @@ end
 -- real target switches in combat. GetComboPoints("player", "target") reads
 -- the new target's count correctly, so Forever reads combo points from it;
 -- Retail keeps UnitPower (shared across targets by design since patch
--- 6.0.2, see ThreatPlates' ComboPointsWidget.lua).
+-- 6.0.2).
 local function RefreshComboPoints()
   if not Bar or not Bar:IsShown() then return end
   if not Bar.cpText then return end
@@ -2426,8 +2571,8 @@ end
 -- /bitwdebug: WoW Forever compatibility check
 -------------------------------------------------------------------------------
 
--- Static section 1: which client is this (the raw signals ThreatPlates' own
--- IS_FOREVER detection is built from).
+-- Static section 1: which client is this (the raw client signals, plus the
+-- resulting IS_FOREVER).
 local function ReportClient()
   DbgHeader("Client")
   local version, build, _, interface = GetBuildInfo()
@@ -2435,7 +2580,7 @@ local function ReportClient()
   DbgInfo("WOW_PROJECT_ID", tostring(WOW_PROJECT_ID) .. " (MAINLINE=" .. tostring(WOW_PROJECT_MAINLINE) .. ", CLASSIC=" .. tostring(WOW_PROJECT_CLASSIC) .. ", CAMELOT=" .. tostring(WOW_PROJECT_CAMELOT) .. ")")
   DbgInfo("GetClassicExpansionLevel()", expansionLevel)
   DbgInfo("GetBuildInfo()", string.format("version=%s build=%s interface=%s", tostring(version), tostring(build), tostring(interface)))
-  DbgInfo("Addon.IS_FOREVER (ThreatPlates formula) - spell set in use", tostring(Addon.IS_FOREVER) .. " - " .. (Addon.IS_FOREVER and "FOREVER" or "RETAIL"))
+  DbgInfo("Addon.IS_FOREVER - spell set in use", tostring(Addon.IS_FOREVER) .. " - " .. (Addon.IS_FOREVER and "FOREVER" or "RETAIL"))
   DbgInfo("Class / combat lockdown", tostring(select(2, UnitClass("player"))) .. " / " .. tostring(InCombatLockdown()))
 end
 
@@ -2447,6 +2592,7 @@ local function ReportApis()
     {"AuraContainerSortMethod / SortDirection", AuraContainerSortMethod ~= nil and AuraContainerSortDirection ~= nil},
     {"AnchorUtil.FlowDirection", AnchorUtil ~= nil and AnchorUtil.FlowDirection ~= nil},
     {"PixelUtil.SetSize", PixelUtil ~= nil and PixelUtil.SetSize ~= nil},
+    {"Region:SetRoundLayoutToNearestPixel", UIParent.SetRoundLayoutToNearestPixel ~= nil},
     {"issecretvalue", issecretvalue ~= nil},
     {"C_CurveUtil.CreateColorCurve / Enum.LuaCurveType", C_CurveUtil ~= nil and C_CurveUtil.CreateColorCurve ~= nil and Enum.LuaCurveType ~= nil},
     {"C_UnitAuras.GetAuraDataByIndex", C_UnitAuras ~= nil and C_UnitAuras.GetAuraDataByIndex ~= nil},

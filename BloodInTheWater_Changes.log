@@ -1,4 +1,10 @@
 ------------------------------------------------------
+1.3.0 (2026-10-16)
+------------------------------------------------------
+* Updated TOC version for Patch 12.1.5 for WoW Mainline.
+* Added a proc animation to the proc icons (Clearcasting, Predatory Swiftness).
+
+------------------------------------------------------
 1.2.0 (2026-10-03)
 ------------------------------------------------------
 * Added a fill bar next to each cooldown-buff icon, showing the buff's remaining duration.

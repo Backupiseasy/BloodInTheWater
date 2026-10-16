@@ -799,7 +799,29 @@ function Addon:SetupOptions()
                   self:ReapplyLiveIconFrameFonts()
                 end
               },
-              durationRowSpacer = GetSpacerEntry(3)
+              durationRowSpacer = GetSpacerEntry(3),
+              animationLabel = {
+                name = "Animation:",
+                type = "description",
+                order = 4,
+                width = 1,
+                fontSize = "medium"
+              },
+              buffProcAnimation = {
+                name = "Proc Animation",
+                desc = "Plays a short animation when a proc appears. Requires WoW 12.1.5 or later, no effect on older clients. Applies live to already-created icons while out of combat; in combat it applies as soon as combat ends.",
+                type = "toggle",
+                order = 5,
+                width = 1,
+                get = function()
+                  return self.db.profile.buffProcAnimation
+                end,
+                set = function(_, val)
+                  self.db.profile.buffProcAnimation = val
+                  self:ReapplyLiveAuraButtonSettings()
+                end
+              },
+              animationRowSpacer = GetSpacerEntry(6)
             }
           },
           layoutGroup = {
