@@ -101,6 +101,10 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   `UNIT_POWER_FREQUENT` — both are registered, same handler (`OnPowerUpdate`).
 - `GetShapeshiftFormID() == 1` (`CAT_FORM_ID`) is Cat Form on Forever too — confirmed in-game in Cat Form.
 - Config Mode (preview with unused slots) works on Forever — confirmed in-game.
+- Forever has the 12.1.5-era APIs this addon feature-detects: `AuraButton:AddAuraShownAnimation` (the proc burst
+  plays on Clearcasting), the `UI-HUD-ActionBar-Proc-Start-Flipbook` atlas and `Region:SetRoundLayoutToNearestPixel`
+  — all confirmed in-game, no Lua errors. `CustomAuraButtonSharedMixin` is **not** visible to addon code via `_G`
+  (prints nil), so a `/run` check on it says nothing about the API — test on a real button/proc instead.
 - `UNIT_COMBO_POINTS` does not exist on Forever; combo points arrive via `UNIT_POWER_FREQUENT`/
   `UNIT_POWER_UPDATE` (`COMBO_POINTS`), `PLAYER_TARGET_CHANGED` and the `PLAYER_REGEN_*`/shapeshift-driven `OnShapeshift` refresh (the old 0.5s
   `Bar.stateTicker` was removed).
@@ -127,7 +131,7 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer — hidden on Forever)
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
 4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
-5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, stack-count text position (Predatory Swiftness and stack text hidden on Forever)
+5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, Proc Animation toggle (12.1.5+ `AddAuraShownAnimation`), stack-count text position (Predatory Swiftness and stack text hidden on Forever)
 6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury, Berserk/Incarnation sharing one slot since the talents are mutually exclusive; no Incarnation on Forever)
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
    character starts on the shared `"Default"` profile; all profiles are available to all characters.
@@ -240,6 +244,16 @@ Registered in `Addon:OnInitialize()`:
   `PixelUtil.SetSize` fallback — PixelUtil is deprecated since 12.1.5). Never read `GetRoundLayoutToNearestPixel()` on
   an AuraButton: it returns a secret boolean to this addon's tainted execution and the `if` throws — confirmed in-game.
   The setter is just called unconditionally every time.
+- AuraButton animation triggers (12.1.5+, `AddPandemicActiveAnimation` for the WoW Border glow, `AddAuraShownAnimation`
+  for the proc burst): the group's parent and every animation's target must be the button or a descendant (set
+  `SetTarget` explicitly). After the hand-over the group is locked (no `CreateAnimation`/`IsPlaying`, no target change,
+  no reliable `OnFinished` chaining) and the targets' Alpha/VertexColor/TexCoords become secret — so build everything
+  first, and toggle an option by changing the animation's own values (e.g. alpha steps pinned to 0 = no-op), never by
+  removing it. Feature-detect the method.
+- The proc burst (`CreateProcBurst`) rebuilds the first half of Blizzard's action-bar spell alert
+  (`ActionButtonSpellAlertTemplate`, `Blizzard_ActionBar/Shared/ActionButtonSpellAlerts.xml`): the one-shot flipbook
+  `UI-HUD-ActionBar-Proc-Start-Flipbook` (0.7s). Blizzard's follow-up looping glow (`UI-HUD-ActionBar-Proc-Loop-Flipbook`)
+  was built and tested, then dropped as too eye-catching. No Config Mode preview (a one-shot has no static look).
 - Real `AuraButton`s are secure/pooled: `InitializeAuraButton` runs exactly once per physical button, ever. Live setting changes re-run the same `Set*` calls via `Addon:ReapplyLiveAuraButtonSettings()` (icon size/font/color) — out of combat only, retried from `OnCombatEnded`. Anything not covered there won't update live on existing buttons until `/reload`.
 - `AddPandemicRegion(region)` marks only the region's **Shown** state secret (`AddSecretAspect`) — color/size/blend stay addon-controlled always. Accepts any Region (Frame or Texture).
 - The default `CooldownFrameTemplate` swipe is circular, not square — this is standard WoW behavior for aura/buff icons everywhere (target frame, unit frames all do the same), not a bug to fix.

@@ -74,6 +74,7 @@ local Defaults = {
     buffNormalColor = {1, 1, 1, 1}, -- countdown text color
     buffStacksPosX = 4,  -- stack-count text offset from icon BOTTOMRIGHT (px)
     buffStacksPosY = -8,
+    buffProcAnimation = true, -- Blizzard's action-bar proc burst on the proc icons (12.1.5+)
     -- Cooldown-buff icons (Tiger's Fury/Berserk/Incarnation by default,
     -- hardcoded — see COOLDOWN_BUFF_SPELL_IDS). Stays one positioned unit
     -- with a Spacing value (stacked vertically), unlike Debuffs/Buffs above
@@ -777,6 +778,93 @@ local function SetPixelSnappedSize(region, width, height)
   end
 end
 
+-- Proc burst (Proccs row): the one-shot "burst" of Blizzard's action-bar
+-- spell alert (ActionButtonSpellAlertTemplate, Blizzard_ActionBar/Shared/
+-- ActionButtonSpellAlerts.xml/.lua), played when a proc appears. Blizzard's
+-- follow-up looping glow is deliberately left out (too eye-catching here).
+-- Blizzard draws the burst at a fixed 150px on a 45px action button (3.33x);
+-- its icon sits inset within the button, ours fills it, so the ratio is
+-- scaled up by the same ~1.16 the Pandemic WoW Border needed (1.4667x ->
+-- 1.7x, see CreatePandemicGlow).
+local PROC_BURST_SCALE = 3.9
+local PROC_BURST_DURATION = 0.7 -- Blizzard's ProcStartAnim flipbook
+-- The flipbook's last frames shrink into the square ring the (omitted) loop
+-- glow continues from — on its own that ring just looks odd, so the burst
+-- fades out early and the flipbook's remainder plays invisibly. Tuned
+-- in-game: a fade over the whole second half (0.35s + 0.35s) still left
+-- the ring faintly visible.
+local PROC_BURST_FADE_START = 0.2
+local PROC_BURST_FADE_DURATION = 0.2
+
+local function LayoutProcBurst(procBurst, iconSize)
+  procBurst:SetSize(iconSize, iconSize)
+  procBurst.Texture:SetSize(iconSize * PROC_BURST_SCALE, iconSize * PROC_BURST_SCALE)
+end
+
+-- Builds the burst on parent (a plain child frame centered on it, so it
+-- draws above the parent's own regions). Mirrors Blizzard's ProcStartAnim:
+-- instant alpha 1, the 30-frame flipbook, instant alpha 0, final alpha kept.
+-- Returns the frame; procBurst.Anim is the group to play.
+local function CreateProcBurst(parent, iconSize)
+  local procBurst = CreateFrame("Frame", nil, parent)
+  procBurst:SetPoint("CENTER", parent, "CENTER")
+
+  local texture = procBurst:CreateTexture(nil, "ARTWORK")
+  texture:SetAtlas("UI-HUD-ActionBar-Proc-Start-Flipbook")
+  texture:SetPoint("CENTER", procBurst, "CENTER")
+  texture:SetAlpha(0)
+  procBurst.Texture = texture
+
+  -- Instant alpha step, same .001s trick Blizzard's template uses.
+  local function AddAlphaStep(group, order)
+    local alpha = group:CreateAnimation("Alpha")
+    alpha:SetTarget(texture)
+    alpha:SetOrder(order)
+    alpha:SetDuration(0.001)
+    return alpha
+  end
+
+  local anim = procBurst:CreateAnimationGroup()
+  anim:SetToFinalAlpha(true)
+  procBurst.ShowStep = AddAlphaStep(anim, 1)
+  local flipBook = anim:CreateAnimation("FlipBook")
+  flipBook:SetTarget(texture)
+  flipBook:SetOrder(2)
+  flipBook:SetDuration(PROC_BURST_DURATION)
+  flipBook:SetFlipBookRows(6)
+  flipBook:SetFlipBookColumns(5)
+  flipBook:SetFlipBookFrames(30)
+  flipBook:SetFlipBookFrameWidth(0)
+  flipBook:SetFlipBookFrameHeight(0)
+  -- Runs alongside the flipbook (same order), see PROC_BURST_FADE_START.
+  local fadeOut = anim:CreateAnimation("Alpha")
+  fadeOut:SetTarget(texture)
+  fadeOut:SetOrder(2)
+  fadeOut:SetStartDelay(PROC_BURST_FADE_START)
+  fadeOut:SetDuration(PROC_BURST_FADE_DURATION)
+  procBurst.FadeOut = fadeOut
+  procBurst.HideStep = AddAlphaStep(anim, 3)
+
+  procBurst.Anim = anim
+  LayoutProcBurst(procBurst, iconSize)
+  return procBurst
+end
+
+-- Turns the proc burst on or off. Once handed to AddAuraShownAnimation the
+-- group can't be removed or queried anymore, so "off" just pins its alpha
+-- steps to 0 — the animation still plays, invisibly. Shared by
+-- InitializeAuraButton and ReapplyLiveAuraButtonSettings, so out of combat
+-- only for existing buttons.
+local function ApplyProcBurstSettings(procBurst, enabled)
+  local alpha = enabled and 1 or 0
+  procBurst.ShowStep:SetFromAlpha(alpha)
+  procBurst.ShowStep:SetToAlpha(alpha)
+  procBurst.FadeOut:SetFromAlpha(alpha)
+  procBurst.FadeOut:SetToAlpha(0)
+  procBurst.HideStep:SetFromAlpha(0)
+  procBurst.HideStep:SetToAlpha(0)
+end
+
 -- Configures one AuraButton's visuals: icon, cooldown swipe + countdown
 -- number, stack count, and tooltip. Runs exactly once per physical button
 -- (Blizzard's frame-pool provider calls this at creation, never again on
@@ -797,7 +885,7 @@ end
 -- Stacks/stackText parented to Cooldown for the same z-order reason. The
 -- two are separate implementations (secure AuraButton vs. plain Frame)
 -- kept manually in sync; a change to one's visuals usually belongs on both.
-local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
+local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY, withProcBurst)
   local db = Addon.db.profile
   local iconSize = db.appearanceIconSize
 
@@ -862,6 +950,23 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
     end
   end
   auraButton.Stacks:SetFont(fontPath, fontSize, "")
+
+  -- Proc burst (Proccs row only), Patch 12.1.5+: Blizzard plays the group
+  -- every time the button turns visible (AddAuraShownAnimation) — i.e. when
+  -- the proc appears. Parented to Cooldown so it draws above the swipe, like
+  -- Blizzard's alert sits above the action button; group, animations and
+  -- target are all descendants of the button, as the hand-over requires.
+  -- After it the group is locked and the texture's Alpha/VertexColor/
+  -- TexCoords become secret — everything is set up beforehand, and live
+  -- updates only ever call SetSize and the animation's own alpha values.
+  -- Feature-detected: older clients just get no burst (and the option does
+  -- nothing there).
+  if withProcBurst and auraButton.AddAuraShownAnimation then
+    local procBurst = CreateProcBurst(auraButton.Cooldown, iconSize)
+    ApplyProcBurstSettings(procBurst, db.buffProcAnimation)
+    auraButton.ProcBurst = procBurst
+    auraButton:AddAuraShownAnimation(procBurst.Anim)
+  end
 end
 
 -- Re-runs InitializeAuraButton's icon-size/font/color Set* calls on every
@@ -909,6 +1014,11 @@ function Addon:ReapplyLiveAuraButtonSettings()
             auraButton.Stacks:ClearAllPoints()
             auraButton.Stacks:SetPoint("BOTTOMRIGHT", stacksX, stacksY or -2)
           end
+        end
+        -- Proc burst size + on/off (Proccs row only, nil elsewhere).
+        if auraButton.ProcBurst then
+          LayoutProcBurst(auraButton.ProcBurst, iconSize)
+          ApplyProcBurstSettings(auraButton.ProcBurst, db.buffProcAnimation)
         end
         if auraButton.PandemicGlow then
           if auraButton.PandemicGlowStyle == "custom" then
@@ -1150,7 +1260,7 @@ function Addon:CreateBuffAuraContainers()
     local container = CreateFrame("AuraContainer", nil, UIParent, "CustomAuraContainerTemplate")
     container:AddAuraGroup("main", "HELPFUL", {
       initializeFrame = function(auraButton)
-        InitializeAuraButton(auraButton, db.buffNormalColor, db.buffStacksPosX, db.buffStacksPosY)
+        InitializeAuraButton(auraButton, db.buffNormalColor, db.buffStacksPosX, db.buffStacksPosY, true)
       end,
       sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Default,
       sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal,
@@ -1659,6 +1769,7 @@ function Addon:ReapplyPandemicPreviewGlowSettings()
     glow:SetSize(size * 1.7, size * 1.7)
   end
 end
+
 
 -- Positions the preview frames at exactly the same coordinates as the real
 -- debuff/buff slot containers / cooldown-buff column, using the identical
