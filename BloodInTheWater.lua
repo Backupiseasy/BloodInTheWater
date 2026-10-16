@@ -739,6 +739,26 @@ local function CreatePandemicGlow(parent, iconSize, db)
   return pandemicGlow
 end
 
+-- Sizes an AuraButton snapped to whole physical pixels. Patch 12.1.5
+-- deprecated PixelUtil.SetSize/SetWidth/SetHeight/SetPoint ("will be removed
+-- in the future") in favor of the native Region:SetRoundLayoutToNearestPixel,
+-- which makes the engine round every later SetSize/SetPoint itself — no
+-- Lua-side GetEffectiveScale arithmetic in this addon's (tainted) execution.
+-- Feature-detected: clients without it (12.1.0, possibly WoW Forever) keep
+-- the PixelUtil path. Set unconditionally on every call, never guarded by
+-- GetRoundLayoutToNearestPixel: on a real AuraButton that getter returns a
+-- secret boolean to this addon's tainted execution — confirmed in-game,
+-- "attempt to perform boolean test on a secret boolean value" from
+-- ReapplyLiveAuraButtonSettings at combat end.
+local function SetPixelSnappedSize(region, width, height)
+  if region.SetRoundLayoutToNearestPixel then
+    region:SetRoundLayoutToNearestPixel(true)
+    region:SetSize(width, height)
+  else
+    PixelUtil.SetSize(region, width, height)
+  end
+end
+
 -- Configures one AuraButton's visuals: icon, cooldown swipe + countdown
 -- number, stack count, and tooltip. Runs exactly once per physical button
 -- (Blizzard's frame-pool provider calls this at creation, never again on
@@ -811,7 +831,7 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
   auraButton:SetMouseMotionEnabled(true)
   auraButton:SetHideTooltipInCombat(false)
 
-  PixelUtil.SetSize(auraButton, iconSize, iconSize)
+  SetPixelSnappedSize(auraButton, iconSize, iconSize)
 
   local fontPath = GetAppearanceFontPath(db.appearanceFont)
   local fontSize = math.max(6, math.floor(iconSize * (db.appearanceFontScale or 0.5)))
@@ -857,7 +877,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
     for i = 1, container:GetAuraGroupFrameCount("main") do
       local auraButton = container:GetAuraGroupFrame("main", i)
       if auraButton then
-        PixelUtil.SetSize(auraButton, iconSize, iconSize)
+        SetPixelSnappedSize(auraButton, iconSize, iconSize)
         local fs = auraButton.Cooldown and auraButton.Cooldown:GetCountdownFontString()
         if fs then
           fs:SetFont(fontPath, fontSize, "")
@@ -902,7 +922,7 @@ function Addon:ReapplyLiveAuraButtonSettings()
           if auraButton.BarBorder then
             -- Color only here, never a full SetBackdrop rebuild — confirmed
             -- in-game that rebuilding the backdrop (ApplyCooldownBuffBarBorder)
-            -- from inside this same loop, right after the PixelUtil.SetSize
+            -- from inside this same loop, right after the SetPixelSnappedSize
             -- call above on the real secure auraButton, throws "attempt to
             -- perform arithmetic on local 'width' (a secret number value,
             -- while execution tainted by 'BloodInTheWater')" from Blizzard's
@@ -2443,6 +2463,7 @@ local function ReportApis()
     {"AuraContainerSortMethod / SortDirection", AuraContainerSortMethod ~= nil and AuraContainerSortDirection ~= nil},
     {"AnchorUtil.FlowDirection", AnchorUtil ~= nil and AnchorUtil.FlowDirection ~= nil},
     {"PixelUtil.SetSize", PixelUtil ~= nil and PixelUtil.SetSize ~= nil},
+    {"Region:SetRoundLayoutToNearestPixel", UIParent.SetRoundLayoutToNearestPixel ~= nil},
     {"issecretvalue", issecretvalue ~= nil},
     {"C_CurveUtil.CreateColorCurve / Enum.LuaCurveType", C_CurveUtil ~= nil and C_CurveUtil.CreateColorCurve ~= nil and Enum.LuaCurveType ~= nil},
     {"C_UnitAuras.GetAuraDataByIndex", C_UnitAuras ~= nil and C_UnitAuras.GetAuraDataByIndex ~= nil},
