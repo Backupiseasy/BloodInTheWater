@@ -2,7 +2,7 @@
 
 ## What this is
 
-WoW AddOn (Retail `## Interface: 120100` + WoW Forever `16001`, see "WoW Forever" below). Druid-only, Cat Form-only energy
+WoW AddOn (Retail `## Interface: 120105` + WoW Forever `16001`, see "WoW Forever" below). Druid-only, Cat Form-only energy
 bar with combo points, target-debuff/player-buff/cooldown-buff icon rows.
 Everything is an addon-owned frame or Blizzard's `AuraContainer`/`AuraButton`
 API — never Blizzard's own Cooldown Manager (CDM) frames. Config via `/bitw`.
