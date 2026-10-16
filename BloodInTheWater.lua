@@ -687,7 +687,9 @@ end
 -- shared by InitializeAuraButton (real, secret-Shown-managed AuraButtons)
 -- and the Config Mode Rake preview frame (plain, addon-owned, always-shown
 -- while previewing). See the two branches below for the per-style detail.
-local function CreatePandemicGlow(parent, iconSize, db)
+-- auraButton is only passed for a real AuraButton (parent == auraButton) —
+-- it decides who plays the WoW Border flipbook, see the end of that branch.
+local function CreatePandemicGlow(parent, iconSize, db, auraButton)
   local pandemicGlow
   if db.pandemicStyle == "custom" then
     -- Plain outset border: a BackdropTemplate
@@ -727,6 +729,9 @@ local function CreatePandemicGlow(parent, iconSize, db)
     local pandemicGlowAnim = pandemicGlow:CreateAnimationGroup()
     pandemicGlowAnim:SetLooping("REPEAT")
     local pandemicGlowFlipBook = pandemicGlowAnim:CreateAnimation("FlipBook")
+    -- Explicit target: AddPandemicActiveAnimation validates every
+    -- animation's GetTarget() as the button or one of its descendants.
+    pandemicGlowFlipBook:SetTarget(pandemicGlow)
     pandemicGlowFlipBook:SetDuration(1)
     pandemicGlowFlipBook:SetOrder(0)
     pandemicGlowFlipBook:SetFlipBookRows(6)
@@ -734,7 +739,20 @@ local function CreatePandemicGlow(parent, iconSize, db)
     pandemicGlowFlipBook:SetFlipBookFrames(30)
     pandemicGlowFlipBook:SetFlipBookFrameWidth(0)
     pandemicGlowFlipBook:SetFlipBookFrameHeight(0)
-    pandemicGlowAnim:Play()
+
+    -- Patch 12.1.5+: Blizzard plays a pandemic "active" animation for
+    -- exactly the window and stops it on leaving, so the flipbook no longer
+    -- runs permanently on every (mostly hidden) debuff button. Handing it
+    -- over locks the group (no more CreateAnimation/IsPlaying, no target
+    -- change) and makes the glow's Alpha/VertexColor/TexCoords secret —
+    -- everything above is set up beforehand, and live updates only ever call
+    -- SetSize on it. Preview frames and older clients just loop it forever,
+    -- as before.
+    if auraButton and auraButton.AddPandemicActiveAnimation then
+      auraButton:AddPandemicActiveAnimation(pandemicGlowAnim)
+    else
+      pandemicGlowAnim:Play()
+    end
   end
   return pandemicGlow
 end
@@ -819,7 +837,7 @@ local function InitializeAuraButton(auraButton, textColor, stacksX, stacksY)
   -- InitializeAuraButton itself, this runs once per pooled button, so
   -- switching db.pandemicStyle only takes effect for buttons created after
   -- the change (existing ones need a /reload).
-  local pandemicGlow = CreatePandemicGlow(auraButton, iconSize, db)
+  local pandemicGlow = CreatePandemicGlow(auraButton, iconSize, db, auraButton)
   auraButton.PandemicGlow = pandemicGlow
   auraButton.PandemicGlowStyle = db.pandemicStyle
   auraButton:AddPandemicRegion(pandemicGlow)
