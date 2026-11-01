@@ -225,6 +225,7 @@ end
 -- Secret values (Midnight-style restricted data, also on Forever) throw on
 -- comparison/arithmetic/tostring — check before touching one from Lua.
 local IsSecret = issecretvalue or function() return false end
+local ShouldAurasBeSecret = C_Secrets.ShouldAurasBeSecret
 
 -- Comma-joined spell ID list of one slot, for debug output.
 local function SpellIdsText(ids)
@@ -972,15 +973,20 @@ end
 -- of needing /reload. Safe:
 -- these are plain Set* calls, not aura-data reads, and AuraButton's
 -- AccessRestrictionFlags = DenyTaintedAccessWhenAurasAreSecret only blocks
--- them while genuinely in combat/secret-aura territory — out of combat
--- (the InCombatLockdown guard here) they're safe from plain addon code.
--- Only ever called out of combat; OnCombatEnded retries it once combat
--- ends in case a change happened mid-fight. GetAuraGroupFrame/
+-- them while auras are secret. That is wider than combat: an active PvP match
+-- (also M+/encounters, see Enum.AddOnRestrictionType) keeps auras secret with
+-- InCombatLockdown() false, and every button then counts as a forbidden
+-- object to this addon — confirmed in-game in a battleground, "calling
+-- 'SetRoundLayoutToNearestPixel' on bad self" from PLAYER_ENTERING_WORLD. So
+-- ShouldAurasBeSecret is the real guard here. InitializeAuraButton is not
+-- affected: Blizzard applies the restriction only after it has run.
+-- OnCombatEnded retries in case a change happened mid-fight, and the
+-- PLAYER_ENTERING_WORLD on leaving a match does the same. GetAuraGroupFrame/
 -- GetAuraGroupFrameCount are real (non-Forbidden) AuraContainer methods,
 -- so every already-pooled button, active or not, is reachable this way.
 function Addon:ReapplyLiveAuraButtonSettings()
   if not HasAuraContainers or not Bar then return end
-  if InCombatLockdown() then return end
+  if InCombatLockdown() or ShouldAurasBeSecret() then return end
 
   local db = self.db.profile
   local iconSize = db.appearanceIconSize
@@ -2228,8 +2234,7 @@ function Addon:OnCombatEnded()
   self:UpdateCooldownBuffContainerFilters()
   self:UpdatePreviewFrames()
   -- Catches up on any Appearance/color change made while still in combat —
-  -- ReapplyLiveAuraButtonSettings no-ops on its own InCombatLockdown guard
-  -- until now.
+  -- ReapplyLiveAuraButtonSettings no-ops on its own guard until now.
   self:ReapplyLiveAuraButtonSettings()
   -- Bar/rows are combat-gated (see OnShapeshift) — hide everything the
   -- instant combat ends.
