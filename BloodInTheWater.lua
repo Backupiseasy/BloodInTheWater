@@ -156,7 +156,7 @@ Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT
 -- Addon:IsSlotUsed). Retail IDs are the modern ones. Forever IDs were checked
 -- against Wowhead's Forever database (nether.wowhead.com/forever/tooltip/spell/<id>):
 -- each spell applies its own aura under the same ID (Rake/Rip debuffs, Tiger's
--- Fury/Berserk/Clearcasting buffs); Rake has 4 ranks, Rip 6, Tiger's Fury none.
+-- Fury/Clearcasting buffs); Rake has 4 ranks, Rip 6, Tiger's Fury none.
 local SPELL_SETS = {
   RETAIL = {
     debuffs = {{155722}, {1079}, {155625, 164812}}, -- Rake, Rip, Moonfire (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
@@ -176,10 +176,7 @@ local SPELL_SETS = {
       {},
     },
     buffs = {{16870}, {}, {}},                   -- Clearcasting (Omen of Clarity proc)
-    cooldowns = {
-      {5217},                                    -- Tiger's Fury (single spell, no ranks on Forever)
-      {417141},                                  -- Berserk
-    },
+    cooldowns = {{5217}},                        -- Tiger's Fury (single spell, no ranks on Forever); Berserk was removed from Forever
     cpBuffer = nil,                              -- no overflow buffer on Forever
   },
 }
@@ -2444,12 +2441,12 @@ end
 -- Aura ID watcher (slash command /bitwauras, toggles on/off). Prints the
 -- spell ID + name of every aura on the player (HELPFUL) and the target
 -- (HARMFUL, own only) the first time it shows up — meant for finding the
--- per-rank aura IDs of Rake/Rip/Tiger's Fury/Berserk on WoW Forever, where
+-- per-rank aura IDs of Rake/Rip/Tiger's Fury on WoW Forever, where
 -- each rank has its own spell ID. Auras whose name matches one of the base
 -- spells below get a "<-- tracked" tag. Every aura *instance* prints once, so
 -- refreshing/re-applying a lower rank prints again. spellId/name can be
 -- secret values in combat — printed as <secret> instead of being touched.
-local WATCH_BASE_SPELL_IDS = {1822, 1079, 5217, 417141} -- Rake, Rip, Tiger's Fury, Berserk
+local WATCH_BASE_SPELL_IDS = {1822, 1079, 5217} -- Rake, Rip, Tiger's Fury
 local WATCH_UNITS = {
   player = "HELPFUL",
   target = "HARMFUL|PLAYER",
@@ -2666,7 +2663,7 @@ local DEBUG_SPELL_GROUPS = {
     {"Incarnation", 102543}, {"Overflow buffer", 405189},
   }},
   { "Forever IDs (checked against Wowhead Forever - 'known' shows which ranks this character has)", {
-    {"Cat Form", 768}, {"Berserk", 417141}, {"Clearcasting", 16870},
+    {"Cat Form", 768}, {"Clearcasting", 16870},
     {"Rake rank 1", 1822}, {"Rake rank 2", 1823}, {"Rake rank 3", 1824}, {"Rake rank 4", 9904},
     {"Rip rank 1", 1079}, {"Rip rank 2", 9492}, {"Rip rank 3", 9493},
     {"Rip rank 4", 9752}, {"Rip rank 5", 9894}, {"Rip rank 6", 9896},

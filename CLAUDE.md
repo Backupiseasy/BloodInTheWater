@@ -68,9 +68,10 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   Classic rank of Rake/Rip has its own ID. An empty list = unused slot (container/preview disabled, Options
   row hidden). `DEBUFF_SPELL_SETS` etc. are the precomputed `includeSpellIDs` sets.
 - Forever tracks: Rake (1822, 1823, 1824, 9904), Rip (1079, 9492, 9493, 9752, 9894, 9896), Tiger's Fury
-  (5217, no ranks), Berserk (417141), Clearcasting (16870 — the proc buff; 16864 is the Omen of Clarity
-  talent). Not there: Moonfire (not tracked — not used in the Cat Form rotation), Predatory Swiftness,
-  Incarnation, combo point overflow buffer.
+  (5217, no ranks), Clearcasting (16870 — the proc buff; 16864 is the Omen of Clarity talent). Not there:
+  Moonfire (not tracked — not used in the Cat Form rotation), Predatory Swiftness, Berserk (the ability was
+  removed from Forever, its former ID 417141 is no longer tracked), Incarnation, combo point overflow buffer.
+  Forever's `cooldowns` list has one slot only, so the second cooldown container/preview frame doesn't exist there.
   All IDs checked against Wowhead Forever: `https://nether.wowhead.com/forever/tooltip/spell/<id>` returns
   JSON whose `buff` field is the aura the spell applies (same ID). Plain `www.wowhead.com` is
   Cloudflare-blocked for scripts.
@@ -132,7 +133,7 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
 4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
 5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, Proc Animation toggle (12.1.5+ `AddAuraShownAnimation`), stack-count text position (Predatory Swiftness and stack text hidden on Forever)
-6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury, Berserk/Incarnation sharing one slot since the talents are mutually exclusive; no Incarnation on Forever)
+6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury, Berserk/Incarnation sharing one slot since the talents are mutually exclusive; Forever tracks Tiger's Fury only, its Berserk/Incarnation bar color is hidden)
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every
    character starts on the shared `"Default"` profile; all profiles are available to all characters.
 
@@ -337,7 +338,7 @@ really fire during a window.
 
 `/bitwauras` → `Addon:ToggleAuraWatch()` — toggles a watcher that prints spell ID + name of every new
 aura on the player (HELPFUL) / target (own HARMFUL) to chat; used to find the per-rank aura IDs of
-Rake/Rip/Tiger's Fury/Berserk/Clearcasting on WoW Forever. **Only works out of combat** — confirmed live
+Rake/Rip/Tiger's Fury/Clearcasting on WoW Forever. **Only works out of combat** — confirmed live
 on Forever that `C_UnitAuras.GetAuraDataByIndex` throws immediately at index 1 in combat
 ("Auras cannot be accessed when secret while tainted by 'BloodInTheWater'"), because the whole call
 chain (slash command → `AceConsole` → this addon's code) is addon-tainted; it's not a partial degrade to

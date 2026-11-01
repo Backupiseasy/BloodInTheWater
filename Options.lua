@@ -931,7 +931,7 @@ function Addon:SetupOptions()
             args = {
               cooldownBuffDesc = {
                 name = function()
-                  return Addon.IS_FOREVER and "Tracks Tiger's Fury and Berserk."
+                  return Addon.IS_FOREVER and "Tracks Tiger's Fury."
                     or "Tracks Tiger's Fury and Berserk/Incarnation (a talent choice — they share one slot)."
                 end,
                 type = "description",
@@ -1029,13 +1029,13 @@ function Addon:SetupOptions()
                 end
               },
               cooldownBuffBarColor2 = {
-                name = function()
-                  return Addon.IS_FOREVER and "Berserk" or "Berserk / Incarnation"
-                end,
+                name = "Berserk / Incarnation",
                 type = "color",
                 hasAlpha = true,
                 order = 9,
                 width = 1,
+                -- Berserk doesn't exist on WoW Forever (no slot, see Addon:IsSlotUsed).
+                hidden = function() return not Addon:IsSlotUsed("cooldown", 2) end,
                 get = function()
                   local c = self.db.profile.cooldownBuffBarColors[2]
                   return c[1], c[2], c[3], c[4] or 1
