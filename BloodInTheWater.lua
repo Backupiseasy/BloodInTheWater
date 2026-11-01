@@ -156,7 +156,7 @@ Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT
 -- Addon:IsSlotUsed). Retail IDs are the modern ones. Forever IDs were checked
 -- against Wowhead's Forever database (nether.wowhead.com/forever/tooltip/spell/<id>):
 -- each spell applies its own aura under the same ID (Rake/Rip debuffs, Tiger's
--- Fury/Berserk/Clearcasting buffs); Rake has 4 ranks, Rip 6, Tiger's Fury none.
+-- Fury/Clearcasting buffs); Rake has 4 ranks, Rip 6, Tiger's Fury none.
 local SPELL_SETS = {
   RETAIL = {
     debuffs = {{155722}, {1079}, {155625, 164812}}, -- Rake, Rip, Moonfire (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
@@ -176,10 +176,7 @@ local SPELL_SETS = {
       {},
     },
     buffs = {{16870}, {}, {}},                   -- Clearcasting (Omen of Clarity proc)
-    cooldowns = {
-      {5217},                                    -- Tiger's Fury (single spell, no ranks on Forever)
-      {417141},                                  -- Berserk
-    },
+    cooldowns = {{5217}},                        -- Tiger's Fury (single spell, no ranks on Forever); Berserk was removed from Forever
     cpBuffer = nil,                              -- no overflow buffer on Forever
   },
 }
@@ -228,6 +225,7 @@ end
 -- Secret values (Midnight-style restricted data, also on Forever) throw on
 -- comparison/arithmetic/tostring — check before touching one from Lua.
 local IsSecret = issecretvalue or function() return false end
+local ShouldAurasBeSecret = C_Secrets.ShouldAurasBeSecret
 
 -- Comma-joined spell ID list of one slot, for debug output.
 local function SpellIdsText(ids)
@@ -975,15 +973,20 @@ end
 -- of needing /reload. Safe:
 -- these are plain Set* calls, not aura-data reads, and AuraButton's
 -- AccessRestrictionFlags = DenyTaintedAccessWhenAurasAreSecret only blocks
--- them while genuinely in combat/secret-aura territory — out of combat
--- (the InCombatLockdown guard here) they're safe from plain addon code.
--- Only ever called out of combat; OnCombatEnded retries it once combat
--- ends in case a change happened mid-fight. GetAuraGroupFrame/
+-- them while auras are secret. That is wider than combat: an active PvP match
+-- (also M+/encounters, see Enum.AddOnRestrictionType) keeps auras secret with
+-- InCombatLockdown() false, and every button then counts as a forbidden
+-- object to this addon — confirmed in-game in a battleground, "calling
+-- 'SetRoundLayoutToNearestPixel' on bad self" from PLAYER_ENTERING_WORLD. So
+-- ShouldAurasBeSecret is the real guard here. InitializeAuraButton is not
+-- affected: Blizzard applies the restriction only after it has run.
+-- OnCombatEnded retries in case a change happened mid-fight, and the
+-- PLAYER_ENTERING_WORLD on leaving a match does the same. GetAuraGroupFrame/
 -- GetAuraGroupFrameCount are real (non-Forbidden) AuraContainer methods,
 -- so every already-pooled button, active or not, is reachable this way.
 function Addon:ReapplyLiveAuraButtonSettings()
   if not HasAuraContainers or not Bar then return end
-  if InCombatLockdown() then return end
+  if InCombatLockdown() or ShouldAurasBeSecret() then return end
 
   local db = self.db.profile
   local iconSize = db.appearanceIconSize
@@ -2231,8 +2234,7 @@ function Addon:OnCombatEnded()
   self:UpdateCooldownBuffContainerFilters()
   self:UpdatePreviewFrames()
   -- Catches up on any Appearance/color change made while still in combat —
-  -- ReapplyLiveAuraButtonSettings no-ops on its own InCombatLockdown guard
-  -- until now.
+  -- ReapplyLiveAuraButtonSettings no-ops on its own guard until now.
   self:ReapplyLiveAuraButtonSettings()
   -- Bar/rows are combat-gated (see OnShapeshift) — hide everything the
   -- instant combat ends.
@@ -2444,12 +2446,12 @@ end
 -- Aura ID watcher (slash command /bitwauras, toggles on/off). Prints the
 -- spell ID + name of every aura on the player (HELPFUL) and the target
 -- (HARMFUL, own only) the first time it shows up — meant for finding the
--- per-rank aura IDs of Rake/Rip/Tiger's Fury/Berserk on WoW Forever, where
+-- per-rank aura IDs of Rake/Rip/Tiger's Fury on WoW Forever, where
 -- each rank has its own spell ID. Auras whose name matches one of the base
 -- spells below get a "<-- tracked" tag. Every aura *instance* prints once, so
 -- refreshing/re-applying a lower rank prints again. spellId/name can be
 -- secret values in combat — printed as <secret> instead of being touched.
-local WATCH_BASE_SPELL_IDS = {1822, 1079, 5217, 417141} -- Rake, Rip, Tiger's Fury, Berserk
+local WATCH_BASE_SPELL_IDS = {1822, 1079, 5217} -- Rake, Rip, Tiger's Fury
 local WATCH_UNITS = {
   player = "HELPFUL",
   target = "HARMFUL|PLAYER",
@@ -2666,7 +2668,7 @@ local DEBUG_SPELL_GROUPS = {
     {"Incarnation", 102543}, {"Overflow buffer", 405189},
   }},
   { "Forever IDs (checked against Wowhead Forever - 'known' shows which ranks this character has)", {
-    {"Cat Form", 768}, {"Berserk", 417141}, {"Clearcasting", 16870},
+    {"Cat Form", 768}, {"Clearcasting", 16870},
     {"Rake rank 1", 1822}, {"Rake rank 2", 1823}, {"Rake rank 3", 1824}, {"Rake rank 4", 9904},
     {"Rip rank 1", 1079}, {"Rip rank 2", 9492}, {"Rip rank 3", 9493},
     {"Rip rank 4", 9752}, {"Rip rank 5", 9894}, {"Rip rank 6", 9896},

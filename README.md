@@ -34,7 +34,7 @@ Type `/bitw` or click the addon's entry in the Addon Compartment (the addon menu
 ## Known limitations
 
 - Druid-only, Cat Form-only — by design, not a bug
-- Supports Retail and WoW Forever. On WoW Forever Rake, Rip, Tiger's Fury, Berserk and Clearcasting are tracked; Moonfire, Predatory Swiftness, Incarnation, the combo point overflow buffer, the refresh glow and the Clearcasting stack count don't exist there
+- Supports Retail and WoW Forever. On WoW Forever Rake, Rip, Tiger's Fury and Clearcasting are tracked; Moonfire, Predatory Swiftness, Berserk, Incarnation, the combo point overflow buffer, the refresh glow and the Clearcasting stack count don't exist there
 
 ## Feedback & Issues
 
