@@ -427,7 +427,16 @@ local function ApplyCooldownBuffBarBorder(barBorder, db)
   })
   local c = db.cooldownBuffBarBorderColor
   barBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
+  -- The deferred reapply runs outside Blizzard's securecallfunction
+  -- initializer wrapper. On a real AuraButton's border (a child of the
+  -- button), Blizzard has applied DenyTaintedAccessWhenAurasAreSecret by
+  -- then, so while auras are secret (e.g. /reload in combat) the NineSlice
+  -- pieces are forbidden objects — "calling 'SetVertexColor' on bad self",
+  -- confirmed in-game. Skip it then; ReapplyLiveAuraButtonSettings re-sets
+  -- the border color once auras are no longer secret (OnCombatEnded /
+  -- PLAYER_ENTERING_WORLD).
   C_Timer.After(0, function()
+    if ShouldAurasBeSecret() then return end
     if barBorder and barBorder.SetBackdropBorderColor then
       barBorder:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1)
     end
