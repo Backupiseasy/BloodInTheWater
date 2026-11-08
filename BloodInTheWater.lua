@@ -546,6 +546,17 @@ function Addon:OnEnable()
   -- no polling needed there.
   self:RegisterEvent("UNIT_AURA", "OnUnitAura")
   self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
+  -- Forever only: fires when the unit holding the player's combo points
+  -- changes (first point built on an enemy, points moving to a new enemy,
+  -- points lost) - not on a plain target switch. Needed for e.g. 1 point on
+  -- mob A, switch to B, Claw B -> 1 point on B: the count stays 1 -> 1, so no
+  -- UNIT_POWER_* event fires for COMBO_POINTS (verified live in event logs;
+  -- also stated in Blizzard's own TargetBoundComboPointBar.lua, which
+  -- registers it next to PLAYER_TARGET_CHANGED). Retail combo points aren't
+  -- target-bound, nothing to catch there.
+  if self.IS_FOREVER then
+    self:RegisterEvent("COMBO_TARGET_CHANGED", "OnComboTargetChanged")
+  end
   -- AuraContainers cannot be created during combat; retries container
   -- creation here in case OnEnable itself ran mid-combat (e.g. /reload).
   self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnded")
@@ -2317,11 +2328,21 @@ function Addon:OnTargetChanged()
   -- new target's real "0". Force the "0" color directly from the plain,
   -- addon-owned db color table - a fresh target is always at 0 by
   -- Vanilla-rules design, so this needs no secret read at all. Overwritten
-  -- again, correctly, by the next real combo-point-building event.
+  -- again, correctly, by the next real combo-point-building event - a
+  -- UNIT_POWER_* event if the count changes, COMBO_TARGET_CHANGED
+  -- (OnComboTargetChanged) if the points just move over to the new target
+  -- at the same count.
   if Addon.IS_FOREVER and Bar and Bar.cpText then
     local c = Addon.db.profile.cpColor0
     Bar.cpText:SetTextColor(c[1], c[2], c[3], c[4])
   end
+end
+
+-- Forever only (see OnEnable). UnitPower now holds the new combo target's
+-- count, so GetComboPoints (text) and the UnitPower-based color curve agree
+-- again; a plain refresh also undoes OnTargetChanged's forced "0" color.
+function Addon.OnComboTargetChanged()
+  RefreshComboPoints()
 end
 
 -- Other addons that register LibSharedMedia entries (custom statusbar/
@@ -2654,7 +2675,7 @@ end
 -- (Says nothing about whether it actually fires - see "/bitwdebug live".)
 local DEBUG_EVENTS = {
   "UPDATE_SHAPESHIFT_FORM", "UNIT_POWER_FREQUENT", "UNIT_POWER_UPDATE", "UNIT_MAXPOWER",
-  "UNIT_COMBO_POINTS", "UNIT_AURA", "PLAYER_TARGET_CHANGED",
+  "UNIT_COMBO_POINTS", "UNIT_AURA", "PLAYER_TARGET_CHANGED", "COMBO_TARGET_CHANGED",
   "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD",
 }
 local function ReportEventRegistration()
@@ -2761,6 +2782,7 @@ local DEBUG_LIVE_EVENTS = {
   UNIT_COMBO_POINTS = {"player"},
   UNIT_AURA = {"player", "target"},
   PLAYER_TARGET_CHANGED = false,
+  COMBO_TARGET_CHANGED = false,
   PLAYER_REGEN_DISABLED = false,
   PLAYER_REGEN_ENABLED = false,
 }

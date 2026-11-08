@@ -100,6 +100,22 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
   target is always at 0); the next combo-point event overwrites it correctly.
 - The combo point reset on a Forever target switch can arrive via `UNIT_POWER_UPDATE` instead of
   `UNIT_POWER_FREQUENT` — both are registered, same handler (`OnPowerUpdate`).
+- `COMBO_TARGET_CHANGED` (Forever-only, no payload; registered behind `IS_FOREVER` → `Addon.OnComboTargetChanged`
+  → `RefreshComboPoints`) fires when the **unit holding the combo points** changes: on the first point built on an
+  enemy (e.g. combat start), when points move to a new enemy, and when they are lost (enemy dies / combat ends).
+  It does **not** fire on a plain target switch — `PLAYER_TARGET_CHANGED` alone never triggered it (confirmed in
+  logs; web descriptions claiming "fires when you target a new enemy" are wrong). Gap it closes: 1 CP on A, switch
+  to B, build 1 CP on B → count stays 1 → 1, so **no** `UNIT_POWER_*` fires for `COMBO_POINTS` (only
+  `COMBO_TARGET_CHANGED` plus `UNIT_POWER_UPDATE(ENERGY)`); without it text and color stayed at
+  `OnTargetChanged`'s 0 / `cpColor0` until the next point. At that moment `UnitPower` already holds the new
+  combo target's count, so the `UnitPowerPercent` color is correct again. `OnTargetChanged`'s refresh +
+  `cpColor0` override stay (the event isn't a target-switch signal). Source: Blizzard's
+  `Blizzard_UnitFrame/Camelot/TargetBoundComboPointBar.lua` (mixin of both the Rogue and Druid bars: "Moving
+  points to a new target keeps the same count, so no power event fires"). Behavior verified live 2026-11-08 with
+  a Rogue in Threat Plates (event logs); Druid uses the same mixin, BitW's own handler not yet tested in-game.
+- Side note from the same Threat Plates test: there, `GetComboPoints("player", "target")` returned plain numbers
+  in open-world combat from tainted addon code, never secret. BitW's live secret-value crash on it (see
+  above) therefore likely depends on context (encounter/PvP/...) — keep the C-side-sink handling regardless.
 - `GetShapeshiftFormID() == 1` (`CAT_FORM_ID`) is Cat Form on Forever too — confirmed in-game in Cat Form.
 - Config Mode (preview with unused slots) works on Forever — confirmed in-game.
 - Forever has the 12.1.5-era APIs this addon feature-detects: `AuraButton:AddAuraShownAnimation` (the proc burst
