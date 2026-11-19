@@ -150,13 +150,13 @@ Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT
 -- All spell IDs below are hardcoded, not user-configured — no Options input
 -- field exists for any of them (was tried, reverted per explicit request).
 -- Each slot is a LIST of aura spell IDs, not a single one: on Forever (Classic
--- rules) every rank of Rake/Rip/Tiger's Fury has its own spell ID, and any of
+-- rules) every rank of Rake/Rip has its own spell ID, and any of
 -- them may be the one that's up. An empty list = slot unused on that client
 -- (its container/preview stays disabled, Options hides its row — see
 -- Addon:IsSlotUsed). Retail IDs are the modern ones. Forever IDs were checked
 -- against Wowhead's Forever database (nether.wowhead.com/forever/tooltip/spell/<id>):
--- each spell applies its own aura under the same ID (Rake/Rip debuffs, Tiger's
--- Fury/Clearcasting buffs); Rake has 4 ranks, Rip 6, Tiger's Fury none.
+-- each spell applies its own aura under the same ID (Rake/Rip debuffs,
+-- Clearcasting buff); Rake has 4 ranks, Rip 6.
 local SPELL_SETS = {
   RETAIL = {
     debuffs = {{155722}, {1079}, {155625, 164812}}, -- Rake, Rip, Moonfire (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
@@ -176,7 +176,7 @@ local SPELL_SETS = {
       {},
     },
     buffs = {{16870}, {}, {}},                   -- Clearcasting (Omen of Clarity proc)
-    cooldowns = {{5217}},                        -- Tiger's Fury (single spell, no ranks on Forever); Berserk was removed from Forever
+    cooldowns = {},                              -- none: Tiger's Fury and Berserk were removed from Forever
     cpBuffer = nil,                              -- no overflow buffer on Forever
   },
 }
@@ -1432,7 +1432,7 @@ local function AttachCooldownBuffBar(auraButton, spellID, barColor)
 end
 
 -- Creates the fixed single-spell containers, one per COOLDOWN_BUFF_SPELL_IDS
--- slot (2 on both Retail and Forever, see SPELL_SETS). AuraContainers cannot
+-- slot (2 on Retail, none on Forever, see SPELL_SETS). AuraContainers cannot
 -- be created during combat — guarded here and retried from OnCombatEnded,
 -- same as CreateDebuffAuraContainers/CreateBuffAuraContainers.
 function Addon:CreateCooldownBuffContainers()
@@ -2476,12 +2476,12 @@ end
 -- Aura ID watcher (slash command /bitwauras, toggles on/off). Prints the
 -- spell ID + name of every aura on the player (HELPFUL) and the target
 -- (HARMFUL, own only) the first time it shows up — meant for finding the
--- per-rank aura IDs of Rake/Rip/Tiger's Fury on WoW Forever, where
+-- per-rank aura IDs of Rake/Rip on WoW Forever, where
 -- each rank has its own spell ID. Auras whose name matches one of the base
 -- spells below get a "<-- tracked" tag. Every aura *instance* prints once, so
 -- refreshing/re-applying a lower rank prints again. spellId/name can be
 -- secret values in combat — printed as <secret> instead of being touched.
-local WATCH_BASE_SPELL_IDS = {1822, 1079, 5217} -- Rake, Rip, Tiger's Fury
+local WATCH_BASE_SPELL_IDS = {1822, 1079} -- Rake, Rip
 local WATCH_UNITS = {
   player = "HELPFUL",
   target = "HARMFUL|PLAYER",
@@ -2702,7 +2702,6 @@ local DEBUG_SPELL_GROUPS = {
     {"Rake rank 1", 1822}, {"Rake rank 2", 1823}, {"Rake rank 3", 1824}, {"Rake rank 4", 9904},
     {"Rip rank 1", 1079}, {"Rip rank 2", 9492}, {"Rip rank 3", 9493},
     {"Rip rank 4", 9752}, {"Rip rank 5", 9894}, {"Rip rank 6", 9896},
-    {"Tiger's Fury (no ranks)", 5217},
   }},
 }
 local function ReportSpells()

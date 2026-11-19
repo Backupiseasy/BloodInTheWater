@@ -922,6 +922,8 @@ function Addon:SetupOptions()
         name = "Cooldowns",
         type = "group",
         order = 6,
+        -- No cooldown is tracked on WoW Forever (Tiger's Fury and Berserk were removed there).
+        hidden = function() return not Addon:IsSlotUsed("cooldown", 1) end,
         args = {
           infoGroup = {
             name = "Information",
@@ -930,10 +932,7 @@ function Addon:SetupOptions()
             order = 1,
             args = {
               cooldownBuffDesc = {
-                name = function()
-                  return Addon.IS_FOREVER and "Tracks Tiger's Fury."
-                    or "Tracks Tiger's Fury and Berserk/Incarnation (a talent choice — they share one slot)."
-                end,
+                name = "Tracks Tiger's Fury and Berserk/Incarnation (a talent choice — they share one slot).",
                 type = "description",
                 order = 1,
                 fontSize = "medium"
