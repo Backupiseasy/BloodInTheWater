@@ -67,8 +67,11 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 - Spell IDs live in `SPELL_SETS` (`RETAIL` / `FOREVER`); each slot is a **list** of aura IDs because every
   Classic rank of Rake/Rip has its own ID. An empty list = unused slot (container/preview disabled, Options
   row hidden). `DEBUFF_SPELL_SETS` etc. are the precomputed `includeSpellIDs` sets.
-- Forever tracks: Rake (1822, 1823, 1824, 9904), Rip (1079, 9492, 9493, 9752, 9894, 9896), Clearcasting
-  (16870 — the proc buff; 16864 is the Omen of Clarity talent). Not there:
+- Forever tracks: Rake (1822, 1823, 1824, 9904), Rip (1079, 9492, 9493, 9752, 9894, 9896), Faerie Fire
+  (770, 778, 9749, 9907 — its own debuff slot 4, empty on Retail, just as Moonfire's slot 3 is empty on
+  Forever; default position between Rake and Rip, same spot as Moonfire's since only one exists per client;
+  Faerie Fire (Feral) 16857/17390-17392 doesn't exist on Forever, Wowhead "Entity not found"; in-game not yet
+  verified), Clearcasting (16870 — the proc buff; 16864 is the Omen of Clarity talent). Not there:
   Moonfire (not tracked — not used in the Cat Form rotation), Predatory Swiftness, Tiger's Fury and Berserk
   (both abilities were removed from Forever; former IDs 5217 / 417141 no longer tracked), Incarnation, combo
   point overflow buffer. Forever's `cooldowns` list is empty, so no cooldown container/preview frame exists
@@ -149,7 +152,7 @@ check it for `nil` first) and `GetClassicExpansionLevel() == 0` (Vanilla), Inter
 1. **Energy Bar** — Appearance (texture/color, border texture/color/thickness/inset, background color, font size), Layout (size/position)
 2. **Combo Points** — Appearance (per-count colors, font sizes), Layout (position, overflow buffer — hidden on Forever)
 3. **Icons** — shared icon size/typeface/countdown-font-size across all rows
-4. **Debuffs** — Rake/Rip/Moonfire (Moonfire hidden on Forever) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
+4. **Debuffs** — Rake/Rip/Moonfire/Faerie Fire (Moonfire hidden on Forever, Faerie Fire hidden on Retail) position, countdown color, Pandemic Glow (color + Simple Border/WoW Border style; its 3 widgets hidden on Forever, no pandemic mechanic there)
 5. **Proccs** — Clearcasting/Predatory Swiftness position, countdown color, Proc Animation toggle (12.1.5+ `AddAuraShownAnimation`), stack-count text position (Predatory Swiftness and stack text hidden on Forever)
 6. **Cooldowns** — tracked-spells info text; Appearance (show icon, show bar, countdown color, per-spell bar colors, bar texture, border texture/color/thickness/inset, background color); Layout (column position, row spacing, bar width/height/gap, icon-on-right) (Tiger's Fury, Berserk/Incarnation sharing one slot since the talents are mutually exclusive; whole tab hidden on Forever, which tracks no cooldowns)
 7. **Profiles** — `AceDBOptions-3.0`'s stock tab (switch/copy/reset). `AceDB:New(..., true)` → every

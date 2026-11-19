@@ -49,12 +49,14 @@ local Defaults = {
     -- addon-set.
     pandemicColor = {0.498, 1, 0, 1}, -- 7FFF00, chartreuse green
     pandemicStyle = "wow", -- "custom" (plain outset border) or "wow" (Assisted Combat-style ants glow)
-    -- Target debuff icons (AuraContainer), 3 fixed, individually positioned
+    -- Target debuff icons (AuraContainer), 4 fixed, individually positioned
     -- slots (Offset X/Y each, relative to the energy bar center) — spell IDs
-    -- hardcoded, see DEBUFF_SPELL_IDS.
+    -- hardcoded, see DEBUFF_SPELL_IDS. Slot 3 (Moonfire) is Retail-only,
+    -- slot 4 (Faerie Fire) Forever-only, so both default to the same spot.
     debuffOffsets = {
       {x = -106, y = 38},
       {x = 106,  y = 38},
+      {x = 0,    y = 38},
       {x = 0,    y = 38},
     },
     debuffNormalColor = {1, 1, 1, 1}, -- countdown text color
@@ -150,16 +152,17 @@ Addon.IS_FOREVER = (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT
 -- All spell IDs below are hardcoded, not user-configured — no Options input
 -- field exists for any of them (was tried, reverted per explicit request).
 -- Each slot is a LIST of aura spell IDs, not a single one: on Forever (Classic
--- rules) every rank of Rake/Rip has its own spell ID, and any of
+-- rules) every rank of Rake/Rip/Faerie Fire has its own spell ID, and any of
 -- them may be the one that's up. An empty list = slot unused on that client
 -- (its container/preview stays disabled, Options hides its row — see
 -- Addon:IsSlotUsed). Retail IDs are the modern ones. Forever IDs were checked
 -- against Wowhead's Forever database (nether.wowhead.com/forever/tooltip/spell/<id>):
--- each spell applies its own aura under the same ID (Rake/Rip debuffs,
--- Clearcasting buff); Rake has 4 ranks, Rip 6.
+-- each spell applies its own aura under the same ID (Rake/Rip/Faerie Fire
+-- debuffs, Clearcasting buff); Rake has 4 ranks, Rip 6, Faerie Fire 4.
+-- Faerie Fire (Feral) doesn't exist on Forever (Wowhead: not found).
 local SPELL_SETS = {
   RETAIL = {
-    debuffs = {{155722}, {1079}, {155625, 164812}}, -- Rake, Rip, Moonfire (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
+    debuffs = {{155722}, {1079}, {155625, 164812}, {}}, -- Rake, Rip, Moonfire, (Faerie Fire: Forever-only) (Feral aura 155625 via Lunar Inspiration, not cast ID 8921; 164812 = regular Moonfire DoT when cast without it, outside Cat Form)
     buffs = {{135700}, {69369}, {}},             -- Clearcasting, Predatory Swiftness, (unused)
     -- Berserk and Incarnation: Avatar of Ashamane are a mutually exclusive
     -- talent choice (only one is ever selectable) — share one slot instead
@@ -173,7 +176,8 @@ local SPELL_SETS = {
     debuffs = {
       {1822, 1823, 1824, 9904},                  -- Rake ranks 1-4
       {1079, 9492, 9493, 9752, 9894, 9896},      -- Rip ranks 1-6
-      {},
+      {},                                        -- Moonfire: not tracked on Forever
+      {770, 778, 9749, 9907},                    -- Faerie Fire ranks 1-4
     },
     buffs = {{16870}, {}, {}},                   -- Clearcasting (Omen of Clarity proc)
     cooldowns = {},                              -- none: Tiger's Fury and Berserk were removed from Forever
@@ -188,7 +192,7 @@ local function ToSpellSet(ids)
   return set
 end
 
-local NUM_DEBUFF_SLOTS = 3 -- covers Rake + Rip + (Moonfire on Retail) tracked simultaneously
+local NUM_DEBUFF_SLOTS = 4 -- Rake, Rip, Moonfire (Retail-only), Faerie Fire (Forever-only)
 local DEBUFF_SPELL_IDS = Spells.debuffs
 local NUM_PLAYER_BUFF_SLOTS = 3 -- matches #PLAYER_BUFF_SPELL_IDS
 local PLAYER_BUFF_SPELL_IDS = Spells.buffs
@@ -669,7 +673,7 @@ function Addon:CreateEnergyBar()
   -- called again from UpdateBar whenever the Appearance font changes.
   self:ApplyGlobalFont()
 
-  -- Target debuff icons (Rake/Rip/Moonfire) — one AuraContainer per fixed
+  -- Target debuff icons (Rake/Rip/Moonfire/Faerie Fire) — one AuraContainer per fixed
   -- slot, each locked to a single spellID (DEBUFF_SPELL_IDS, hardcoded) via
   -- candidateFilters.includeSpellIDs. Created here (out of combat during
   -- ADDON_LOADED) and retried from OnCombatEnded if this ever runs
@@ -1178,7 +1182,7 @@ end
 -- Target debuff icons (AuraContainer, unit = target)
 -------------------------------------------------------------------------------
 
--- Creates the 3 fixed-slot AuraContainers, one per tracked debuff spellID.
+-- Creates the 4 fixed-slot AuraContainers, one per tracked debuff spellID.
 -- Each is single-purpose (maxFrameCount 1, one spellID via
 -- candidateFilters.includeSpellIDs) rather than one shared multi-group
 -- container, since these slots need fixed screen positions (slot i always
@@ -1252,7 +1256,7 @@ end
 
 -- Each slot is independently positioned (debuffOffsets[i] = {x, y}, relative
 -- to the energy bar's own center) instead of a shared base + computed
--- spacing — the user can freely arrange all 3 debuff icons anywhere.
+-- spacing — the user can freely arrange all debuff icons anywhere.
 function Addon:RepositionDebuffContainers()
   if not Bar or not Bar.debuffContainers then return end
 
@@ -2476,12 +2480,12 @@ end
 -- Aura ID watcher (slash command /bitwauras, toggles on/off). Prints the
 -- spell ID + name of every aura on the player (HELPFUL) and the target
 -- (HARMFUL, own only) the first time it shows up — meant for finding the
--- per-rank aura IDs of Rake/Rip on WoW Forever, where
+-- per-rank aura IDs of Rake/Rip/Faerie Fire on WoW Forever, where
 -- each rank has its own spell ID. Auras whose name matches one of the base
 -- spells below get a "<-- tracked" tag. Every aura *instance* prints once, so
 -- refreshing/re-applying a lower rank prints again. spellId/name can be
 -- secret values in combat — printed as <secret> instead of being touched.
-local WATCH_BASE_SPELL_IDS = {1822, 1079} -- Rake, Rip
+local WATCH_BASE_SPELL_IDS = {1822, 1079, 770} -- Rake, Rip, Faerie Fire
 local WATCH_UNITS = {
   player = "HELPFUL",
   target = "HARMFUL|PLAYER",
@@ -2702,6 +2706,8 @@ local DEBUG_SPELL_GROUPS = {
     {"Rake rank 1", 1822}, {"Rake rank 2", 1823}, {"Rake rank 3", 1824}, {"Rake rank 4", 9904},
     {"Rip rank 1", 1079}, {"Rip rank 2", 9492}, {"Rip rank 3", 9493},
     {"Rip rank 4", 9752}, {"Rip rank 5", 9894}, {"Rip rank 6", 9896},
+    {"Faerie Fire rank 1", 770}, {"Faerie Fire rank 2", 778},
+    {"Faerie Fire rank 3", 9749}, {"Faerie Fire rank 4", 9907},
   }},
 }
 local function ReportSpells()

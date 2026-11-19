@@ -756,6 +756,34 @@ function Addon:SetupOptions()
                     set = function(_, val) self.db.profile.debuffOffsets[3].y = val; self:UpdateBar() end
                   }
                 }
+              },
+              slot4Group = {
+                name = "",
+                type = "group",
+                inline = true,
+                order = 4,
+                -- Faerie Fire is only tracked on WoW Forever (unused slot on Retail, see Addon:IsSlotUsed).
+                hidden = function() return not Addon:IsSlotUsed("debuff", 4) end,
+                args = {
+                  slot4Label = {
+                    name = "Faerie Fire:",
+                    desc = "Offset relative to the energy bar's center (pixels)",
+                    type = "description",
+                    order = 1,
+                    width = 1,
+                    fontSize = "medium"
+                  },
+                  slot4X = {
+                    name = "X Offset", type = "range", min = -500, max = 500, step = 1, order = 2, width = 1,
+                    get = function() return self.db.profile.debuffOffsets[4].x end,
+                    set = function(_, val) self.db.profile.debuffOffsets[4].x = val; self:UpdateBar() end
+                  },
+                  slot4Y = {
+                    name = "Y Offset", type = "range", min = -500, max = 500, step = 1, order = 3, width = 1,
+                    get = function() return self.db.profile.debuffOffsets[4].y end,
+                    set = function(_, val) self.db.profile.debuffOffsets[4].y = val; self:UpdateBar() end
+                  }
+                }
               }
             }
           }
